@@ -1,161 +1,191 @@
-'use client';
+"use client"
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
+import { Button } from "../../components/ui/button"
 
 interface User {
-  id: number;
-  full_name: string;
-  email: string;
-  phone: string;
-  position: string;
-  profile_image: string | null;
-  role: string;
-  created_at: string;
+  id: number
+  full_name: string
+  email: string
+  role: string
 }
 
-export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null);
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    pendingApprovals: 0,
-    activeUsers: 0
-  });
-  const router = useRouter();
+export default function DashboardPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [stats] = useState({
+    totalUsers: 150,
+    pendingApprovals: 23,
+    activeUsers: 127,
+    dataPoints: 50000,
+  })
+  const router = useRouter()
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
+    const userData = localStorage.getItem("user")
     if (userData) {
-      const userObj = JSON.parse(userData);
-      setUser(userObj);
-      
-      // Fetch dashboard stats (we'll implement this later)
-      fetchDashboardStats();
-    } else {
-      router.push('/login');
+      setUser(JSON.parse(userData))
     }
-  }, [router]);
+  }, [])
 
-  const fetchDashboardStats = async () => {
-    // We'll implement this when we have the API
-    setStats({
-      totalUsers: 150,
-      pendingApprovals: 23,
-      activeUsers: 127
-    });
-  };
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  if (!user) return null
 
   return (
-    <div>
+    <div className="space-y-8">
       {/* Welcome Section */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
-          Welcome back, {user.full_name}!
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Here's what's happening with your ministry today.
-        </p>
+      <div className="animate-fadeInUp">
+        <h1 className="text-4xl font-bold text-foreground mb-2">Welcome back, {user.full_name}! 👋</h1>
+        <p className="text-lg text-muted-foreground">Here's what's happening with the agricultural data portal today</p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <span className="text-2xl">👥</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="border-l-4 border-l-primary animate-fadeInUp delay-100">
+          <CardHeader className="pb-3">
+            <CardDescription>Total Users</CardDescription>
+            <CardTitle className="text-4xl">{stats.totalUsers}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <span className="text-2xl mr-2">👥</span>
+              <span>Registered in system</span>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Users</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 bg-yellow-100 rounded-lg">
-              <span className="text-2xl">⏳</span>
+        <Card className="border-l-4 border-l-accent animate-fadeInUp delay-200">
+          <CardHeader className="pb-3">
+            <CardDescription>Pending Approval</CardDescription>
+            <CardTitle className="text-4xl">{stats.pendingApprovals}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <span className="text-2xl mr-2">⏳</span>
+              <span>Awaiting review</span>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending Approval</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.pendingApprovals}</p>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="p-3 bg-green-100 rounded-lg">
-              <span className="text-2xl">✅</span>
+        <Card className="border-l-4 border-l-primary animate-fadeInUp delay-300">
+          <CardHeader className="pb-3">
+            <CardDescription>Active Users</CardDescription>
+            <CardTitle className="text-4xl">{stats.activeUsers}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <span className="text-2xl mr-2">✅</span>
+              <span>Currently active</span>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Users</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-secondary animate-fadeInUp delay-400">
+          <CardHeader className="pb-3">
+            <CardDescription>Data Points</CardDescription>
+            <CardTitle className="text-4xl">{stats.dataPoints.toLocaleString()}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <span className="text-2xl mr-2">📊</span>
+              <span>Collected</span>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <button 
-            onClick={() => router.push('/dashboard/users')}
-            className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition duration-200 text-left"
-          >
-            <span className="text-2xl mb-2 block">👥</span>
-            <p className="font-medium text-blue-800">Manage Users</p>
-            <p className="text-sm text-blue-600">Approve and manage user access</p>
-          </button>
+      <Card className="animate-fadeInUp delay-500">
+        <CardHeader>
+          <CardTitle className="text-2xl">Quick Actions</CardTitle>
+          <CardDescription>Frequently used features and tools</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Button
+              onClick={() => router.push("/dashboard/users")}
+              variant="outline"
+              className="h-auto py-6 flex flex-col items-start space-y-2 hover:bg-primary/5 hover:border-primary transition-all duration-300"
+            >
+              <span className="text-3xl">👥</span>
+              <div className="text-left">
+                <p className="font-semibold">Manage Users</p>
+                <p className="text-xs text-muted-foreground">Approve and manage access</p>
+              </div>
+            </Button>
 
-          <button className="p-4 bg-green-50 hover:bg-green-100 rounded-lg transition duration-200 text-left">
-            <span className="text-2xl mb-2 block">📊</span>
-            <p className="font-medium text-green-800">View Reports</p>
-            <p className="text-sm text-green-600">Analytics and insights</p>
-          </button>
+            <Button
+              onClick={() => router.push("/dashboard/reports")}
+              variant="outline"
+              className="h-auto py-6 flex flex-col items-start space-y-2 hover:bg-accent/5 hover:border-accent transition-all duration-300"
+            >
+              <span className="text-3xl">📊</span>
+              <div className="text-left">
+                <p className="font-semibold">View Reports</p>
+                <p className="text-xs text-muted-foreground">Analytics and insights</p>
+              </div>
+            </Button>
 
-          <button 
-            onClick={() => router.push('/dashboard/settings')}
-            className="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition duration-200 text-left"
-          >
-            <span className="text-2xl mb-2 block">⚙️</span>
-            <p className="font-medium text-purple-800">Settings</p>
-            <p className="text-sm text-purple-600">Account and system settings</p>
-          </button>
+            <Button
+              onClick={() => router.push("/dashboard/settings")}
+              variant="outline"
+              className="h-auto py-6 flex flex-col items-start space-y-2 hover:bg-secondary/5 hover:border-secondary transition-all duration-300"
+            >
+              <span className="text-3xl">⚙️</span>
+              <div className="text-left">
+                <p className="font-semibold">Settings</p>
+                <p className="text-xs text-muted-foreground">Account settings</p>
+              </div>
+            </Button>
 
-          <button className="p-4 bg-orange-50 hover:bg-orange-100 rounded-lg transition duration-200 text-left">
-            <span className="text-2xl mb-2 block">📋</span>
-            <p className="font-medium text-orange-800">Activities</p>
-            <p className="text-sm text-orange-600">Recent system activities</p>
-          </button>
-        </div>
-      </div>
+            <Button
+              variant="outline"
+              className="h-auto py-6 flex flex-col items-start space-y-2 hover:bg-primary/5 hover:border-primary transition-all duration-300 bg-transparent"
+            >
+              <span className="text-3xl">📋</span>
+              <div className="text-left">
+                <p className="font-semibold">Activities</p>
+                <p className="text-xs text-muted-foreground">Recent activities</p>
+              </div>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Recent Activity */}
-      <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Activity</h2>
-        <div className="space-y-3">
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <p className="text-gray-700">New user registration: John Doe</p>
-            <span className="text-sm text-gray-500 ml-auto">2 hours ago</span>
+      <Card className="animate-fadeInUp delay-600">
+        <CardHeader>
+          <CardTitle className="text-2xl">Recent Activity</CardTitle>
+          <CardDescription>Latest system events and updates</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {[
+              { icon: "✅", text: "New user registration: John Doe", time: "2 hours ago", color: "bg-primary/10" },
+              {
+                icon: "📊",
+                text: "Data collection completed: Farm Survey 2025",
+                time: "5 hours ago",
+                color: "bg-accent/10",
+              },
+              { icon: "🔄", text: "System backup completed successfully", time: "1 day ago", color: "bg-secondary/10" },
+            ].map((activity, index) => (
+              <div
+                key={index}
+                className="flex items-center space-x-4 p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className={`w-10 h-10 rounded-full ${activity.color} flex items-center justify-center text-xl`}>
+                  {activity.icon}
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-card-foreground">{activity.text}</p>
+                  <p className="text-sm text-muted-foreground">{activity.time}</p>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <p className="text-gray-700">System backup completed</p>
-            <span className="text-sm text-gray-500 ml-auto">5 hours ago</span>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }
