@@ -121,15 +121,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-
-
       {/* Footer */}
       <footer className="bg-secondary text-secondary-foreground py-12 border-t border-border">
-       
-          <div className="text-center text-sm opacity-70 pt-8 border-t border-secondary-foreground/20">
-            © 2025 Ministry of Agriculture & KuKuNet. All rights reserved.
-          </div>
-        
+        <div className="text-center text-sm opacity-70 pt-8 border-t border-secondary-foreground/20">
+          © 2025 Ministry of Agriculture & KuKuNet. All rights reserved.
+        </div>
       </footer>
     </div>
   )

@@ -1,15 +1,20 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Label } from "../../../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select"
+// import { useToast } from "@/hooks/use-toast"
+import { Eye, EyeOff, Loader2, Check, X } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function RegisterPage() {
+  const router = useRouter()
+  const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     fullName: "",
@@ -23,8 +28,57 @@ export default function RegisterPage() {
     confirmPassword: "",
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  const [passwordStrength, setPasswordStrength] = useState({
+    score: 0,
+    label: "",
+    color: "",
+    checks: {
+      length: false,
+      uppercase: false,
+      lowercase: false,
+      number: false,
+      special: false,
+    },
+  })
 
   const positions = ["MOA Admin", "MOA Staff", "KND Member", "Data Collector", "Other"]
+
+  useEffect(() => {
+    const password = formData.password
+    const checks = {
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+    }
+
+    const score = Object.values(checks).filter(Boolean).length
+    let label = ""
+    let color = ""
+
+    if (score === 0) {
+      label = ""
+      color = ""
+    } else if (score <= 2) {
+      label = "Weak"
+      color = "bg-destructive"
+    } else if (score <= 3) {
+      label = "Fair"
+      color = "bg-yellow-500"
+    } else if (score <= 4) {
+      label = "Good"
+      color = "bg-blue-500"
+    } else {
+      label = "Strong"
+      color = "bg-accent"
+    }
+
+    setPasswordStrength({ score, label, color, checks })
+  }, [formData.password])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -40,11 +94,20 @@ export default function RegisterPage() {
     e.preventDefault()
 
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords don't match!")
+      toast({
+        variant: "destructive",
+        title: "Password Mismatch",
+        description: "Passwords don't match. Please try again.",
+      })
       return
     }
+
     if (formData.password.length < 6) {
-      alert("Password must be at least 6 characters!")
+      toast({
+        variant: "destructive",
+        title: "Weak Password",
+        description: "Password must be at least 6 characters long.",
+      })
       return
     }
 
@@ -72,14 +135,29 @@ export default function RegisterPage() {
       const result = await response.json()
 
       if (result.success) {
-        alert("Registration successful! Please wait for admin approval before logging in.")
-        window.location.href = "/login"
+        toast({
+          variant: "default",
+          title: "Registration Successful!",
+          description: "Please wait for admin approval before logging in.",
+        })
+
+        setTimeout(() => {
+          router.push("/login")
+        }, 1500)
       } else {
-        alert(`Registration failed: ${result.message}`)
+        toast({
+          variant: "destructive",
+          title: "Registration Failed",
+          description: result.message || "Unable to create account. Please try again.",
+        })
       }
     } catch (error) {
       console.error("Registration error:", error)
-      alert("Registration failed. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Connection Error",
+        description: "Unable to connect to server. Please try again.",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -88,7 +166,7 @@ export default function RegisterPage() {
   const progressPercentage = (currentStep / 3) * 100
 
   return (
-    <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 animate-scaleIn">
+    <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 animate-scaleIn max-w-2xl mx-auto">
       {/* Header */}
       <div className="text-center mb-8">
         <Link
@@ -101,9 +179,7 @@ export default function RegisterPage() {
           Back to Home
         </Link>
 
-        <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <span className="text-primary-foreground font-bold text-2xl">📝</span>
-        </div>
+        
 
         <h1 className="text-3xl font-bold text-card-foreground mb-2">Create Account</h1>
 
@@ -268,32 +344,99 @@ export default function RegisterPage() {
           <div className="space-y-6 animate-fadeInUp">
             <div className="space-y-2">
               <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="At least 6 characters"
-                minLength={6}
-                className="h-12"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="At least 6 characters"
+                  minLength={6}
+                  className="h-12 pr-10"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+
+              {formData.password && (
+                <div className="space-y-3 mt-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${passwordStrength.color}`}
+                        style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
+                      />
+                    </div>
+                    {passwordStrength.label && <span className="text-xs font-medium">{passwordStrength.label}</span>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div
+                      className={`flex items-center gap-1.5 ${passwordStrength.checks.length ? "text-accent" : "text-muted-foreground"}`}
+                    >
+                      {passwordStrength.checks.length ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                      <span>8+ characters</span>
+                    </div>
+                    <div
+                      className={`flex items-center gap-1.5 ${passwordStrength.checks.uppercase ? "text-accent" : "text-muted-foreground"}`}
+                    >
+                      {passwordStrength.checks.uppercase ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                      <span>Uppercase letter</span>
+                    </div>
+                    <div
+                      className={`flex items-center gap-1.5 ${passwordStrength.checks.lowercase ? "text-accent" : "text-muted-foreground"}`}
+                    >
+                      {passwordStrength.checks.lowercase ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                      <span>Lowercase letter</span>
+                    </div>
+                    <div
+                      className={`flex items-center gap-1.5 ${passwordStrength.checks.number ? "text-accent" : "text-muted-foreground"}`}
+                    >
+                      {passwordStrength.checks.number ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                      <span>Number</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password *</Label>
-              <Input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                required
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                placeholder="Confirm your password"
-                minLength={6}
-                className="h-12"
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Confirm your password"
+                  minLength={6}
+                  className="h-12 pr-10"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <X className="h-3 w-3" />
+                  Passwords do not match
+                </p>
+              )}
             </div>
 
             <div className="p-4 bg-accent/10 rounded-lg border border-accent/20">
@@ -304,11 +447,24 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex gap-4">
-              <Button type="button" onClick={() => setCurrentStep(2)} variant="outline" className="flex-1 h-12">
+              <Button
+                type="button"
+                onClick={() => setCurrentStep(2)}
+                variant="outline"
+                className="flex-1 h-12"
+                disabled={isLoading}
+              >
                 Back
               </Button>
               <Button type="submit" className="flex-1 h-12 bg-accent hover:bg-accent/90" disabled={isLoading}>
-                {isLoading ? "Creating Account..." : "Create Account"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Creating Account...
+                  </>
+                ) : (
+                  "Create Account"
+                )}
               </Button>
             </div>
           </div>

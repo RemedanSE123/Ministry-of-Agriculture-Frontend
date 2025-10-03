@@ -1,21 +1,28 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import Link from "next/link"
-import { Button } from "../../../components/ui/button"
-import { Input } from "../../../components/ui/input"
-import { Label } from "../../../components/ui/label"
-import { Checkbox } from "../../../components/ui/checkbox"
+import { useRouter } from "next/navigation"
+// import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+// import { useToast } from "@/hooks/use-toast"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function LoginPage() {
+  const router = useRouter()
+  const { toast } = useToast()
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -24,13 +31,17 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
 
     if (!formData.email || !formData.password) {
-      alert("Please fill in all fields!")
-      setIsLoading(false)
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please fill in all fields.",
+      })
       return
     }
+
+    setIsLoading(true)
 
     try {
       const response = await fetch("http://localhost:5000/api/auth/login", {
@@ -46,14 +57,30 @@ export default function LoginPage() {
 
       if (result.success) {
         localStorage.setItem("user", JSON.stringify(result.user))
-        alert("Login successful!")
-        window.location.href = "/dashboard"
+
+        toast({
+          variant: "default",
+          title: "Login Successful!",
+          description: `Welcome back, ${result.user.fullName}!`,
+        })
+
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 500)
       } else {
-        alert(`Login failed: ${result.message}`)
+        toast({
+          variant: "destructive",
+          title: "Login Failed",
+          description: result.message || "Invalid credentials. Please try again.",
+        })
       }
     } catch (error) {
       console.error("Login error:", error)
-      alert("Login failed. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Connection Error",
+        description: "Unable to connect to server. Please try again.",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -74,7 +101,14 @@ export default function LoginPage() {
         </Link>
 
         <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <span className="text-primary-foreground font-bold text-2xl">🔐</span>
+          <svg className="w-8 h-8 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+            />
+          </svg>
         </div>
 
         <h1 className="text-3xl font-bold text-card-foreground mb-2">Welcome Back</h1>
@@ -94,21 +128,32 @@ export default function LoginPage() {
             onChange={handleChange}
             placeholder="your.email@example.com"
             className="h-12"
+            disabled={isLoading}
           />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            required
-            value={formData.password}
-            onChange={handleChange}
-            placeholder="Enter your password"
-            className="h-12"
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter your password"
+              className="h-12 pr-10"
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
@@ -117,6 +162,7 @@ export default function LoginPage() {
               id="rememberMe"
               checked={formData.rememberMe}
               onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, rememberMe: checked as boolean }))}
+              disabled={isLoading}
             />
             <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
               Remember me
@@ -133,7 +179,14 @@ export default function LoginPage() {
           className="w-full h-12 text-lg shadow-lg hover:shadow-xl transition-all duration-300"
           disabled={isLoading}
         >
-          {isLoading ? "Signing in..." : "Sign In"}
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Signing in...
+            </>
+          ) : (
+            "Sign In"
+          )}
         </Button>
       </form>
 
