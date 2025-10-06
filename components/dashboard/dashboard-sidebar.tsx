@@ -58,8 +58,22 @@ export function DashboardSidebar() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview', 'collected-data']))
   const [loading, setLoading] = useState(true)
 
+  // Load saved projects on component mount
   useEffect(() => {
     loadSavedProjects()
+    
+    // Add event listener for sidebar refresh
+    const handleRefreshSidebar = () => {
+      console.log('Refresh sidebar event received')
+      loadSavedProjects()
+    }
+    
+    window.addEventListener('refreshSidebar', handleRefreshSidebar)
+    
+    // Cleanup event listener on component unmount
+    return () => {
+      window.removeEventListener('refreshSidebar', handleRefreshSidebar)
+    }
   }, [])
 
   const loadSavedProjects = async () => {

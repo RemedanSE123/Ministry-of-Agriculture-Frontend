@@ -191,6 +191,12 @@ export default function CollectedDataPage() {
     }
   }
 
+  // Add this function to refresh the sidebar
+  const refreshSidebar = () => {
+    // Dispatch a custom event that the sidebar can listen to
+    window.dispatchEvent(new CustomEvent('refreshSidebar'));
+  };
+
   const toggleProjectExpansion = (projectUid: string) => {
     const newExpanded = new Set(expandedProjects)
     if (newExpanded.has(projectUid)) {
@@ -297,65 +303,67 @@ export default function CollectedDataPage() {
     }
   }
 
- const addProjectToDashboard = async (project: Project, tokenId: string) => {
-  try {
-    // Ensure columns are properly formatted arrays
-    const safeAvailableColumns = Array.isArray(project.available_columns) 
-      ? project.available_columns 
-      : [];
+  const addProjectToDashboard = async (project: Project, tokenId: string) => {
+    try {
+      // Ensure columns are properly formatted arrays
+      const safeAvailableColumns = Array.isArray(project.available_columns) 
+        ? project.available_columns 
+        : [];
 
-    const safeSelectedColumns = Array.isArray(project.selected_columns) 
-      ? project.selected_columns 
-      : safeAvailableColumns;
+      const safeSelectedColumns = Array.isArray(project.selected_columns) 
+        ? project.selected_columns 
+        : safeAvailableColumns;
 
-    const projectData = {
-      token_id: parseInt(tokenId),
-      uid: project.uid,
-      name: project.name,
-      owner__username: project.owner__username,
-      date_created: project.date_created,
-      deployment__active: project.deployment__active,
-      submissions: project.submissions || [],
-      available_columns: safeAvailableColumns,
-      selected_columns: safeSelectedColumns,
-      data_url: project.data_url
-    }
+      const projectData = {
+        token_id: parseInt(tokenId),
+        uid: project.uid,
+        name: project.name,
+        owner__username: project.owner__username,
+        date_created: project.date_created,
+        deployment__active: project.deployment__active,
+        submissions: project.submissions || [],
+        available_columns: safeAvailableColumns,
+        selected_columns: safeSelectedColumns,
+        data_url: project.data_url
+      }
 
-    console.log('Saving project to database:', {
-      name: project.name,
-      available_columns: safeAvailableColumns.length,
-      selected_columns: safeSelectedColumns.length
-    });
+      console.log('Saving project to database:', {
+        name: project.name,
+        available_columns: safeAvailableColumns.length,
+        selected_columns: safeSelectedColumns.length
+      });
 
-    const response = await api.saveProject(projectData)
+      const response = await api.saveProject(projectData)
 
-    if (response.success) {
-      // Update local state to mark project as saved
-      setTokens(prev =>
-        prev.map(token =>
-          token.id === tokenId
-            ? {
-                ...token,
-                projects: token.projects.map(p =>
-                  p.uid === project.uid ? { ...p, saved: true } : p
-                ),
-              }
-            : token
+      if (response.success) {
+        // Update local state to mark project as saved
+        setTokens(prev =>
+          prev.map(token =>
+            token.id === tokenId
+              ? {
+                  ...token,
+                  projects: token.projects.map(p =>
+                    p.uid === project.uid ? { ...p, saved: true } : p
+                  ),
+                }
+              : token
+          )
         )
-      )
 
-      // Reload saved projects
-      await loadSavedData()
-      
-      alert(`Project "${project.name}" saved to dashboard!`)
-    } else {
-      alert(`Error: ${response.error}`)
+        // Reload saved projects and refresh sidebar
+        await loadSavedData()
+        refreshSidebar() // Add this line
+        
+        alert(`Project "${project.name}" saved to dashboard!`)
+      } else {
+        alert(`Error: ${response.error}`)
+      }
+    } catch (error: any) {
+      console.error('Error saving project:', error)
+      alert(`Error saving project: ${error.message}`)
     }
-  } catch (error: any) {
-    console.error('Error saving project:', error)
-    alert(`Error saving project: ${error.message}`)
   }
-}
+
   const addToken = async () => {
     if (!newToken.trim()) {
       alert("Please enter an API token")
@@ -423,6 +431,7 @@ export default function CollectedDataPage() {
       const response = await api.deleteProject(projectId)
       if (response.success) {
         setSavedProjects(prev => prev.filter(p => p.id !== projectId))
+        refreshSidebar() // Also refresh sidebar when deleting projects
         alert('Project deleted successfully')
       } else {
         alert(`Error: ${response.error}`)
@@ -975,8 +984,9 @@ export default function CollectedDataPage() {
                                   {project.selected_columns.length === 0 && project.submissions.length > 0 && (
                                     <div className="text-center py-12 bg-accent/10 rounded-lg border border-accent/20">
                                       <CheckSquare className="h-12 w-12 text-accent-foreground mx-auto mb-3" />
-                                      <p className="text-accent-foreground font-semibold">
-                                        Please select at least one column to display data
+                                      <p className="text-accent-foreground font-semibold">Select columns to view data</p>
+                                      <p className="text-accent-foreground/80 text-sm mt-1">
+                                        Choose which columns you want to display from the available columns above
                                       </p>
                                     </div>
                                   )}
@@ -987,12 +997,12 @@ export default function CollectedDataPage() {
                         </div>
                       )}
 
-                      {!tokenData.loading && tokenData.projects.length === 0 && !tokenData.error && (
-                        <div className="text-center py-16 bg-muted/20 rounded-xl border border-border">
-                          <Database className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                          <h4 className="text-xl font-semibold text-foreground mb-2">No Projects Found</h4>
-                          <p className="text-muted-foreground">
-                            This token doesn't have any projects or you don't have access
+                      {!tokenData.loading && tokenData.projects.length === 0 && (
+                        <div className="text-center py-12 bg-muted/20 rounded-lg border border-border">
+                          <Database className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                          <p className="text-foreground font-semibold">No projects found</p>
+                          <p className="text-muted-foreground text-sm mt-1">
+                            This token doesn't have access to any projects or there was an error fetching them
                           </p>
                         </div>
                       )}
@@ -1004,14 +1014,18 @@ export default function CollectedDataPage() {
           </div>
         )}
 
+        {/* Empty State */}
         {tokens.length === 0 && savedProjects.length === 0 && (
-          <div className="text-center py-20 bg-card rounded-xl border border-border shadow-sm">
-            <Key className="h-20 w-20 text-muted-foreground mx-auto mb-6" />
-            <h3 className="text-2xl font-semibold text-foreground mb-3">No tokens added yet</h3>
-            <p className="text-muted-foreground text-lg mb-6">
-              Add your first Kobo API token to start exploring your projects and data
-            </p>
-            <div className="w-24 h-1 bg-primary/20 mx-auto rounded-full"></div>
+          <div className="text-center py-16 bg-card rounded-xl border border-border shadow-sm">
+            <div className="max-w-md mx-auto">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mx-auto mb-6">
+                <Database className="h-10 w-10 text-primary" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-2">No Data Collected Yet</h3>
+              <p className="text-muted-foreground mb-6">
+                Add your Kobo Toolbox API token to start collecting and managing form data
+              </p>
+            </div>
           </div>
         )}
       </div>
