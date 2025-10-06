@@ -29,18 +29,22 @@ import { Badge } from "@/components/ui/badge"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useAuth } from "@/contexts/AuthContext" // ← ADD THIS IMPORT
 
 export function DashboardNavbar() {
   const router = useRouter()
   const [theme, setTheme] = useState<"light" | "dark">("dark")
-  const [user, setUser] = useState<any>(null)
+  
+  // 🎯 REPLACE local state with Auth Context
+  const { user, logout, isLoading } = useAuth()
 
-  useEffect(() => {
-    const userData = localStorage.getItem("user")
-    if (userData) {
-      setUser(JSON.parse(userData))
-    }
-  }, [])
+  // 🎯 REMOVE this useEffect - AuthContext handles it now
+  // useEffect(() => {
+  //   const userData = localStorage.getItem("user")
+  //   if (userData) {
+  //     setUser(JSON.parse(userData))
+  //   }
+  // }, [])
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light"
@@ -48,15 +52,49 @@ export function DashboardNavbar() {
     document.documentElement.classList.toggle("dark")
   }
 
+  // 🎯 UPDATE logout to use Auth Context
   const handleLogout = () => {
-    localStorage.removeItem("user")
-    router.push("/login")
+    logout() // ← This now uses the context logout function
+    // localStorage.removeItem("user") ← REMOVE - handled by context
+    // router.push("/login") ← REMOVE - handled by context
   }
 
+  // 🎯 UPDATE to use full_name from backend (not fullName)
   const getUserInitials = () => {
-    if (!user?.fullName) return "U"
-    const names = user.fullName.split(" ")
-    return names.length > 1 ? `${names[0][0]}${names[1][0]}`.toUpperCase() : names[0][0].toUpperCase()
+    if (!user?.full_name) return "U"
+    const names = user.full_name.split(" ")
+    return names.length > 1 
+      ? `${names[0][0]}${names[1][0]}`.toUpperCase() 
+      : names[0][0].toUpperCase()
+  }
+
+  // 🎯 Function to get profile image URL
+  const getProfileImageUrl = () => {
+    if (!user?.profile_image) return "/placeholder.svg?height=32&width=32"
+    
+    // If profile_image is a full URL, use it directly
+    if (user.profile_image.startsWith('http')) {
+      return user.profile_image
+    }
+    
+    // If it's a file path, construct the URL
+    return `http://localhost:5000/${user.profile_image}`
+  }
+
+  // Show loading state if auth is still checking
+  if (isLoading) {
+    return (
+      <header className="flex h-[72px] items-center justify-between border-b border-border bg-card/50 backdrop-blur-xl px-8">
+        <div className="flex flex-1 items-center gap-4">
+          <div className="relative w-full max-w-xl">
+            <div className="h-11 bg-gray-200 animate-pulse rounded-lg"></div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-10 w-10 bg-gray-200 animate-pulse rounded-full"></div>
+        </div>
+      </header>
+    )
   }
 
   return (
@@ -69,21 +107,12 @@ export function DashboardNavbar() {
             placeholder="Search farms, reports, analytics..."
             className="h-11 pl-11 pr-20 bg-background/60 border-border/60 focus-visible:bg-background transition-colors text-[13px] placeholder:text-muted-foreground/60"
           />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <kbd className="pointer-events-none hidden h-6 select-none items-center gap-1 rounded border border-border bg-muted px-2 font-mono text-[10px] font-medium text-muted-foreground opacity-100 sm:flex">
-              <Command className="h-3 w-3" />
-              <span>K</span>
-            </kbd>
-          </div>
+          
         </div>
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Environment Badge */}
-        <Badge variant="outline" className="hidden md:flex gap-2 px-3 py-1.5 border-accent/30 bg-accent/5 text-accent">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-          <span className="text-[11px] font-semibold">Production</span>
-        </Badge>
+      
 
         {/* Theme Toggle */}
         <Button
@@ -95,10 +124,7 @@ export function DashboardNavbar() {
           {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
         </Button>
 
-        {/* Help */}
-        <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-muted/80 transition-colors">
-          <HelpCircle className="h-[18px] w-[18px]" />
-        </Button>
+      
 
         {/* Notifications */}
         <DropdownMenu>
@@ -111,107 +137,58 @@ export function DashboardNavbar() {
           <DropdownMenuContent align="end" className="w-[380px]">
             <DropdownMenuLabel className="flex items-center justify-between">
               <span>Notifications</span>
-              <Badge variant="secondary" className="h-5 px-2 text-[10px]">
-                3 new
-              </Badge>
+            
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
-              <DropdownMenuItem className="flex flex-col items-start gap-2 p-4 cursor-pointer">
-                <div className="flex w-full items-start justify-between gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-                    <FileText className="h-4 w-4 text-accent" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="text-[13px] font-semibold leading-tight">Crop Report Ready</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Q1 2025 agricultural production report is now available for review
-                    </p>
-                    <span className="text-[11px] text-muted-foreground">2 minutes ago</span>
-                  </div>
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex flex-col items-start gap-2 p-4 cursor-pointer">
-                <div className="flex w-full items-start justify-between gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <AlertCircle className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="text-[13px] font-semibold leading-tight">System Maintenance</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Scheduled database maintenance tonight at 2:00 AM
-                    </p>
-                    <span className="text-[11px] text-muted-foreground">1 hour ago</span>
-                  </div>
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex flex-col items-start gap-2 p-4 cursor-pointer">
-                <div className="flex w-full items-start justify-between gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-chart-2/10">
-                    <TrendingUp className="h-4 w-4 text-chart-2" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="text-[13px] font-semibold leading-tight">Production Milestone</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Northern region exceeded quarterly targets by 15%
-                    </p>
-                    <span className="text-[11px] text-muted-foreground">3 hours ago</span>
-                  </div>
-                </div>
-              </DropdownMenuItem>
-            </div>
+            
+              
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="justify-center text-[13px] font-medium text-primary cursor-pointer">
-              View all notifications
-            </DropdownMenuItem>
+           
           </DropdownMenuContent>
         </DropdownMenu>
 
         <div className="mx-2 h-8 w-px bg-border" />
 
+        {/* 🎯 UPDATED User Menu - Now uses Auth Context */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-11 gap-3 px-3 hover:bg-muted/80 transition-colors">
               <Avatar className="h-8 w-8 ring-2 ring-border">
-                <AvatarImage src={user?.profileImage || "/placeholder.svg?height=32&width=32"} />
+                <AvatarImage 
+                  src={getProfileImageUrl()} 
+                  alt={user?.full_name || "User"}
+                />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                   {getUserInitials()}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden flex-col items-start lg:flex">
-                <span className="text-[13px] font-semibold leading-tight">{user?.fullName || "User"}</span>
-                <span className="text-[11px] text-muted-foreground leading-tight">{user?.position || "Staff"}</span>
+                <span className="text-[13px] font-semibold leading-tight">
+                  {user?.full_name || "User"}
+                </span>
+                <span className="text-[11px] text-muted-foreground leading-tight capitalize">
+                  {user?.role || user?.position || "Staff"}
+                </span>
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel>
               <div className="flex flex-col gap-2">
-                <p className="text-sm font-semibold">{user?.fullName || "User"}</p>
+                <p className="text-sm font-semibold capitalize">{user?.full_name || "User"}</p>
                 <p className="text-xs text-muted-foreground font-normal">{user?.email || "user@example.com"}</p>
+                {/* 🎯 ADD Role Badge */}
+                <Badge 
+                  variant="secondary" 
+                  className="w-fit text-[10px] capitalize"
+                >
+                  {user?.role || "user"}
+                </Badge>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <Link href="/dashboard/profile">
-              <DropdownMenuItem className="cursor-pointer text-[13px]">
-                <User className="mr-2 h-4 w-4" />
-                Profile Settings
-              </DropdownMenuItem>
-            </Link>
-            <Link href="/dashboard/settings">
-              <DropdownMenuItem className="cursor-pointer text-[13px]">
-                <Settings className="mr-2 h-4 w-4" />
-                Preferences
-              </DropdownMenuItem>
-            </Link>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogout}
-              className="text-destructive cursor-pointer text-[13px] font-medium"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </DropdownMenuItem>
+           <DropdownMenuSeparator />
+            
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

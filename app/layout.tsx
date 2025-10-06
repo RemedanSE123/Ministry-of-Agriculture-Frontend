@@ -5,6 +5,7 @@ import "./globals.css"
 import type React from "react"
 import { Suspense } from "react"
 import { Toaster } from "@/components/ui/toaster"
+import { AuthProvider } from "@/contexts/AuthContext" // ← ADD THIS IMPORT
 
 const inter = Inter({
   subsets: ["latin"],
@@ -22,7 +23,7 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "MOA Data Portal - Ministry of Agriculture",
   description: "Agricultural Data Management Portal for the Federal Democratic Republic of Ethiopia",
-  generator: "v0.app",
+  generator: "MOA",
 }
 
 export default function RootLayout({
@@ -33,9 +34,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${poppins.variable} font-sans antialiased`}>
-        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
-        <Toaster />
-        <Analytics />
+        {/* 🎯 WRAP EVERYTHING WITH AUTH PROVIDER */}
+        <AuthProvider>
+          <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+          <Toaster />
+          <Analytics />
+        </AuthProvider>
       </body>
     </html>
   )

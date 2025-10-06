@@ -189,55 +189,7 @@ export function DashboardOverview() {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-lg">Regional Distribution</CardTitle>
-            <CardDescription>Farm distribution across provinces</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72 flex items-center justify-center border-2 border-dashed border-border/60 rounded-xl bg-muted/20">
-            <div className="text-center space-y-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-chart-2/10 mx-auto">
-                <MapPin className="h-6 w-6 text-chart-2" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Map Component</p>
-              <p className="text-xs text-muted-foreground/70">Geographic data visualization</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-lg">Crop Distribution</CardTitle>
-            <CardDescription>Production by crop category</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72 flex items-center justify-center border-2 border-dashed border-border/60 rounded-xl bg-muted/20">
-            <div className="text-center space-y-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 mx-auto">
-                <Sprout className="h-6 w-6 text-accent" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Chart Component</p>
-              <p className="text-xs text-muted-foreground/70">Crop type breakdown</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-lg">System Health</CardTitle>
-            <CardDescription>Platform performance metrics</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72 flex items-center justify-center border-2 border-dashed border-border/60 rounded-xl bg-muted/20">
-            <div className="text-center space-y-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 mx-auto">
-                <AlertCircle className="h-6 w-6 text-primary" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Metrics Component</p>
-              <p className="text-xs text-muted-foreground/70">System status indicators</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      
     </div>
   )
 }

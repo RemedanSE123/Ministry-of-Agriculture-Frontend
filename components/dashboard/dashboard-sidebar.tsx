@@ -22,6 +22,10 @@ import {
   FolderOpen,
   ChevronDown,
   ChevronUp,
+  BarChart,
+  BrainCircuit,
+  Bell,
+  LogOut,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -133,23 +137,24 @@ export function DashboardSidebar() {
       ],
     },
     {
-      title: "Administration",
-      id: "administration",
-      items: [
-        { name: "Stakeholders", href: "/dashboard/stakeholders", icon: Users },
-        { name: "User Management", href: "/dashboard/users", icon: UserCog },
-        { name: "Reports", href: "/dashboard/reports", icon: FileText },
-        { name: "Data Management", href: "/dashboard/data", icon: Database },
-      ],
-    },
-    {
-      title: "System",
-      id: "system",
-      items: [
-        { name: "Alerts", href: "/dashboard/alerts", icon: AlertCircle, badge: "3" },
-        { name: "Settings", href: "/dashboard/settings", icon: Settings },
-      ],
-    },
+  title: "Administration",
+  id: "administration",
+  items: [
+    { name: "Reports", href: "/dashboard/reports", icon: BarChart }, 
+    { name: "AI Tools", href: "/dashboard/data", icon: BrainCircuit },
+  ],
+},
+{
+  title: "System",
+  id: "system",
+  items: [
+    { name: "User Management", href: "/dashboard/users", icon: UserCog },
+    { name: "Notifications", href: "/dashboard/alerts", icon: Bell, badge: "3" },
+    { name: "Settings", href: "/dashboard/settings", icon: Settings },
+    { name: "Log Out", href: "/dashboard/logout", icon: LogOut },
+  ],
+},
+
   ]
 
   return (
@@ -161,18 +166,22 @@ export function DashboardSidebar() {
     >
       <div className="flex h-[72px] items-center border-b border-sidebar-border px-5">
         {!collapsed ? (
-          <div className="flex items-center gap-3.5">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/20">
-              <Leaf className="h-5 w-5 text-primary-foreground" />
-              <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-sidebar" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold leading-tight text-sidebar-foreground">
-                Ministry of Agriculture
-              </span>
-              <span className="text-xs text-muted-foreground leading-tight">Central Dashboard</span>
-            </div>
-          </div>
+         <div className="flex items-center gap-3.5">
+  <img
+    src="/moe.webp"
+    alt="Ministry of Agriculture Logo"
+    className="h-12 w-12 object-contain"
+  />
+  <div className="flex flex-col">
+    <span className="text-sm font-semibold leading-tight text-sidebar-foreground">
+      Ministry of Agriculture
+    </span>
+    <span className="text-xs text-muted-foreground leading-tight">
+     Central Dashboard
+    </span>
+  </div>
+</div>
+
         ) : (
           <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/20">
             <Leaf className="h-5 w-5 text-primary-foreground" />
@@ -316,7 +325,7 @@ export function DashboardSidebar() {
           ) : (
             <>
               <ChevronLeft className="h-4 w-4" />
-              <span className="text-[13px]">Collapse sidebar</span>
+              <span className="text-[13px]">© 2025 Kukunet Digital</span>
             </>
           )}
         </Button>
