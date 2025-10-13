@@ -1,13 +1,17 @@
 "use client"
 
 import type React from "react"
-
 import { useProtectedRoute } from "@/hooks/useProtectedRoute"
 import { useState, useEffect } from "react"
-import { Database, Plus, RefreshCw, Trash2, ChevronDown, ChevronRight, Key, CheckSquare, Download, Save, ChevronUp, ChevronLeft } from "lucide-react"
+import { Database, Plus, RefreshCw, Trash2, ChevronDown, ChevronRight, Key, CheckSquare, Download, Save, ChevronUp, ChevronLeft, Clock, Settings, AlertCircle, CheckCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // API utility with better error handling
 const api = {
@@ -26,7 +30,6 @@ const api = {
         ...options,
       });
 
-      // Check if response is HTML (error page)
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
@@ -94,6 +97,23 @@ const api = {
     });
   },
 
+  async syncProject(projectUid: string) {
+    return this.makeRequest(`/projects/${projectUid}/sync`, {
+      method: 'POST',
+    });
+  },
+
+  async configureAutoSync(projectUid: string, enabled: boolean, interval: string) {
+    return this.makeRequest(`/projects/${projectUid}/auto-sync`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, interval }),
+    });
+  },
+
+  async getAutoSyncStatus() {
+    return this.makeRequest('/projects/auto-sync/status');
+  },
+
   // Kobo API
   async fetchKoboProjects(tokenData: any) {
     return this.makeRequest('/kobo/projects', {
@@ -116,6 +136,9 @@ interface Project {
   data_url: string
   error?: string
   saved?: boolean
+  auto_sync_enabled?: boolean
+  auto_sync_interval?: string
+  next_sync_time?: string
 }
 
 interface TokenData {
@@ -153,6 +176,17 @@ interface SavedProject {
   data_url: string
   last_sync: string
   token_name: string
+  auto_sync_enabled: boolean
+  auto_sync_interval?: string
+  next_sync_time?: string
+}
+
+interface SyncStatus {
+  [key: string]: {
+    loading: boolean
+    success?: boolean
+    error?: string
+  }
 }
 
 export default function CollectedDataPage() {
@@ -166,11 +200,19 @@ export default function CollectedDataPage() {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const [showSavedProjects, setShowSavedProjects] = useState(true)
   const [showFetchedProjects, setShowFetchedProjects] = useState(true)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({})
+  const [autoSyncConfig, setAutoSyncConfig] = useState<Record<string, {enabled: boolean, interval: string}>>({})
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
 
   // Load saved tokens and projects on component mount
   useEffect(() => {
     loadSavedData()
   }, [])
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 5000)
+  }
 
   const loadSavedData = async () => {
     try {
@@ -185,15 +227,24 @@ export default function CollectedDataPage() {
 
       if (projectsResponse.success) {
         setSavedProjects(projectsResponse.projects)
+        
+        // Initialize auto-sync config
+        const config: Record<string, {enabled: boolean, interval: string}> = {}
+        projectsResponse.projects.forEach((project: SavedProject) => {
+          config[project.project_uid] = {
+            enabled: project.auto_sync_enabled || false,
+            interval: project.auto_sync_interval || '01:00:00'
+          }
+        })
+        setAutoSyncConfig(config)
       }
     } catch (error) {
       console.error('Error loading saved data:', error)
+      showNotification('error', 'Failed to load saved data')
     }
   }
 
-  // Add this function to refresh the sidebar
   const refreshSidebar = () => {
-    // Dispatch a custom event that the sidebar can listen to
     window.dispatchEvent(new CustomEvent('refreshSidebar'));
   };
 
@@ -244,9 +295,11 @@ export default function CollectedDataPage() {
                 : p
             )
           )
+          showNotification('success', 'Columns updated successfully')
         }
       } catch (error) {
         console.error('Error updating columns:', error)
+        showNotification('error', 'Failed to update columns')
       }
     }
   }
@@ -271,8 +324,10 @@ export default function CollectedDataPage() {
               : p
           )
         )
+        showNotification('success', 'All columns selected')
       } catch (error) {
         console.error('Error selecting all columns:', error)
+        showNotification('error', 'Failed to select all columns')
       }
     }
   }
@@ -297,10 +352,106 @@ export default function CollectedDataPage() {
               : p
           )
         )
+        showNotification('success', 'All columns cleared')
       } catch (error) {
         console.error('Error clearing columns:', error)
+        showNotification('error', 'Failed to clear columns')
       }
     }
+  }
+
+  const syncProject = async (projectUid: string, projectName: string) => {
+    setSyncStatus(prev => ({
+      ...prev,
+      [projectUid]: { loading: true }
+    }))
+
+    try {
+      const response = await api.syncProject(projectUid)
+      
+      if (response.success) {
+        setSyncStatus(prev => ({
+          ...prev,
+          [projectUid]: { loading: false, success: true }
+        }))
+        
+        // Reload saved projects to get updated data
+        await loadSavedData()
+        refreshSidebar()
+        
+        showNotification('success', `"${projectName}" synced successfully! ${response.total_submissions} submissions loaded.`)
+        
+        // Clear success status after 3 seconds
+        setTimeout(() => {
+          setSyncStatus(prev => ({
+            ...prev,
+            [projectUid]: { loading: false, success: false }
+          }))
+        }, 3000)
+      } else {
+        throw new Error(response.error)
+      }
+    } catch (error: any) {
+      console.error('Error syncing project:', error)
+      setSyncStatus(prev => ({
+        ...prev,
+        [projectUid]: { loading: false, error: error.message }
+      }))
+      showNotification('error', `Failed to sync "${projectName}": ${error.message}`)
+    }
+  }
+
+  const configureAutoSync = async (projectUid: string, enabled: boolean, interval: string) => {
+    try {
+      const response = await api.configureAutoSync(projectUid, enabled, interval)
+      
+      if (response.success) {
+        setAutoSyncConfig(prev => ({
+          ...prev,
+          [projectUid]: { enabled, interval }
+        }))
+        
+        // Update local state
+        setSavedProjects(prev =>
+          prev.map(p =>
+            p.project_uid === projectUid
+              ? { 
+                  ...p, 
+                  auto_sync_enabled: enabled,
+                  auto_sync_interval: interval,
+                  next_sync_time: enabled ? new Date(Date.now() + getIntervalMs(interval)).toISOString() : undefined
+                }
+              : p
+          )
+        )
+        
+        showNotification('success', response.message)
+      } else {
+        throw new Error(response.error)
+      }
+    } catch (error: any) {
+      console.error('Error configuring auto-sync:', error)
+      showNotification('error', `Failed to configure auto-sync: ${error.message}`)
+    }
+  }
+
+  const getIntervalMs = (interval: string): number => {
+    const [hours, minutes, seconds] = interval.split(':').map(Number)
+    return (hours * 3600 + minutes * 60 + seconds) * 1000
+  }
+
+  const formatTimeUntilSync = (nextSyncTime: string): string => {
+    const now = new Date()
+    const nextSync = new Date(nextSyncTime)
+    const diffMs = nextSync.getTime() - now.getTime()
+    
+    if (diffMs <= 0) return 'Now'
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60))
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
   }
 
   const addProjectToDashboard = async (project: Project, tokenId: string) => {
@@ -352,21 +503,21 @@ export default function CollectedDataPage() {
 
         // Reload saved projects and refresh sidebar
         await loadSavedData()
-        refreshSidebar() // Add this line
+        refreshSidebar()
         
-        alert(`Project "${project.name}" saved to dashboard!`)
+        showNotification('success', `Project "${project.name}" saved to dashboard!`)
       } else {
-        alert(`Error: ${response.error}`)
+        showNotification('error', `Error: ${response.error}`)
       }
     } catch (error: any) {
       console.error('Error saving project:', error)
-      alert(`Error saving project: ${error.message}`)
+      showNotification('error', `Error saving project: ${error.message}`)
     }
   }
 
   const addToken = async () => {
     if (!newToken.trim()) {
-      alert("Please enter an API token")
+      showNotification('error', "Please enter an API token")
       return
     }
 
@@ -380,6 +531,13 @@ export default function CollectedDataPage() {
       })
 
       if (response.success) {
+        // Check if this is a duplicate token message
+        if (response.message && response.message.includes('already registered')) {
+          showNotification('success', response.message)
+        } else {
+          showNotification('success', response.message || 'Token added successfully')
+        }
+
         // Add to tokens state (fetched projects)
         const newTokenData: TokenData = {
           id: response.tokenId.toString(),
@@ -401,11 +559,11 @@ export default function CollectedDataPage() {
         setNewToken("")
         setTokenName("")
       } else {
-        alert(`Error: ${response.error}`)
+        showNotification('error', `Error: ${response.error}`)
       }
     } catch (err: any) {
       console.error('Fetch error:', err)
-      alert(`Error: ${err.message}`)
+      showNotification('error', `Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -417,28 +575,29 @@ export default function CollectedDataPage() {
       if (response.success) {
         setTokens(prev => prev.filter(t => t.id !== tokenId))
         await loadSavedData()
+        showNotification('success', 'Token removed successfully')
       } else {
-        alert(`Error: ${response.error}`)
+        showNotification('error', `Error: ${response.error}`)
       }
     } catch (error: any) {
       console.error('Error deleting token:', error)
-      alert(`Error: ${error.message}`)
+      showNotification('error', `Error: ${error.message}`)
     }
   }
 
-  const deleteSavedProject = async (projectId: number) => {
+  const deleteSavedProject = async (projectId: number, projectName: string) => {
     try {
       const response = await api.deleteProject(projectId)
       if (response.success) {
         setSavedProjects(prev => prev.filter(p => p.id !== projectId))
-        refreshSidebar() // Also refresh sidebar when deleting projects
-        alert('Project deleted successfully')
+        refreshSidebar()
+        showNotification('success', `Project "${projectName}" deleted successfully`)
       } else {
-        alert(`Error: ${response.error}`)
+        showNotification('error', `Error: ${response.error}`)
       }
     } catch (error: any) {
       console.error('Error deleting project:', error)
-      alert(`Error: ${error.message}`)
+      showNotification('error', `Error: ${error.message}`)
     }
   }
 
@@ -467,6 +626,7 @@ export default function CollectedDataPage() {
               : t
           )
         )
+        showNotification('success', 'Token refreshed successfully')
       } else {
         setTokens(prev =>
           prev.map(t =>
@@ -479,6 +639,7 @@ export default function CollectedDataPage() {
               : t
           )
         )
+        showNotification('error', `Error: ${response.error}`)
       }
     } catch (err: any) {
       console.error('Refresh error:', err)
@@ -493,6 +654,7 @@ export default function CollectedDataPage() {
             : t
         )
       )
+      showNotification('error', `Error: ${err.message}`)
     }
   }
 
@@ -521,6 +683,32 @@ export default function CollectedDataPage() {
 
   return (
     <div className="min-h-screen bg-background p-6">
+      {/* Notification */}
+      {notification && (
+        <div className={cn(
+          "fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg border max-w-md",
+          notification.type === 'success' 
+            ? "bg-green-50 border-green-200 text-green-800"
+            : notification.type === 'error'
+            ? "bg-red-50 border-red-200 text-red-800"
+            : "bg-blue-50 border-blue-200 text-blue-800"
+        )}>
+          <div className="flex items-center gap-3">
+            {notification.type === 'success' && <CheckCircle className="h-5 w-5" />}
+            {notification.type === 'error' && <AlertCircle className="h-5 w-5" />}
+            <span className="flex-1">{notification.message}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNotification(null)}
+              className="h-6 w-6 p-0 hover:bg-transparent"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="space-y-2">
@@ -543,24 +731,30 @@ export default function CollectedDataPage() {
           </div>
           <div className="flex flex-col md:flex-row gap-4 items-end">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-muted-foreground mb-2">Token Name (optional)</label>
-              <input
+              <Label htmlFor="token-name" className="block text-sm font-medium text-muted-foreground mb-2">
+                Token Name (optional)
+              </Label>
+              <Input
+                id="token-name"
                 type="text"
                 placeholder="My Organization"
                 value={tokenName}
                 onChange={(e) => setTokenName(e.target.value)}
-                className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                className="w-full"
               />
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-muted-foreground mb-2">API Token *</label>
-              <input
+              <Label htmlFor="api-token" className="block text-sm font-medium text-muted-foreground mb-2">
+                API Token *
+              </Label>
+              <Input
+                id="api-token"
                 type="password"
                 placeholder="Paste your Kobo API token here"
                 value={newToken}
                 onChange={(e) => setNewToken(e.target.value)}
                 onKeyPress={handleKeyPress}
-                className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                className="w-full"
               />
             </div>
             <Button onClick={addToken} disabled={loading || !newToken.trim()} className="px-6 h-[42px]">
@@ -619,120 +813,240 @@ export default function CollectedDataPage() {
             
             {showSavedProjects && (
               <div className="space-y-4">
-                {savedProjects.map((project) => (
-                  <div key={project.id} className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-                    <div className="bg-muted/50 px-6 py-4 border-b border-border">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Badge variant={project.deployment_active ? "default" : "secondary"}>
-                            {project.deployment_active ? "Active" : "Inactive"}
-                          </Badge>
-                          <div>
-                            <h3 className="text-lg font-semibold text-foreground">{project.project_name}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              Token: {project.token_name} • Submissions: {project.total_submissions} • 
-                              Last Sync: {project.last_sync ? new Date(project.last_sync).toLocaleString() : 'Never'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => toggleProjectExpansion(project.project_uid)}
-                            variant="outline"
-                            size="sm"
-                          >
-                            {expandedProjects.has(project.project_uid) ? (
-                              <ChevronDown className="mr-2 h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="mr-2 h-4 w-4" />
-                            )}
-                            {expandedProjects.has(project.project_uid) ? "Collapse" : "Expand"}
-                          </Button>
-                          <Button 
-                            onClick={() => deleteSavedProject(project.id)} 
-                            variant="destructive" 
-                            size="sm"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded Content for Saved Projects */}
-                    {expandedProjects.has(project.project_uid) && (
-                      <div className="p-6 space-y-6">
-                        {/* Column Selection */}
-                        {project.available_columns.length > 0 && (
-                          <div className="bg-muted/30 rounded-lg p-4 border border-border">
-                            <div className="flex items-center justify-between mb-4">
-                              <h6 className="font-semibold text-foreground flex items-center gap-2">
-                                <CheckSquare className="h-4 w-4" />
-                                Select Columns to Display
-                              </h6>
-                              <div className="flex gap-2">
-                                <Button 
-                                  onClick={() => selectAllColumns(project.project_uid, project.available_columns)} 
-                                  variant="outline" 
-                                  size="sm"
-                                >
-                                  Select All
-                                </Button>
-                                <Button 
-                                  onClick={() => clearAllColumns(project.project_uid)} 
-                                  variant="outline" 
-                                  size="sm"
-                                >
-                                  Clear All
-                                </Button>
-                              </div>
+                {savedProjects.map((project) => {
+                  const projectSyncStatus = syncStatus[project.project_uid]
+                  const isSyncing = projectSyncStatus?.loading
+                  const syncSuccess = projectSyncStatus?.success
+                  
+                  return (
+                    <div key={project.id} className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+                      <div className="bg-muted/50 px-6 py-4 border-b border-border">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Badge variant={project.deployment_active ? "default" : "secondary"}>
+                              {project.deployment_active ? "Active" : "Inactive"}
+                            </Badge>
+                            <div>
+                              <h3 className="text-lg font-semibold text-foreground">{project.project_name}</h3>
+                              <p className="text-sm text-muted-foreground">
+                                Token: {project.token_name} • Submissions: {project.total_submissions} • 
+                                Last Sync: {project.last_sync ? new Date(project.last_sync).toLocaleString() : 'Never'}
+                                {project.auto_sync_enabled && project.next_sync_time && (
+                                  <span className="ml-2 text-blue-600">
+                                    • Next sync in: {formatTimeUntilSync(project.next_sync_time)}
+                                  </span>
+                                )}
+                              </p>
                             </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => syncProject(project.project_uid, project.project_name)}
+                              disabled={isSyncing}
+                              variant={syncSuccess ? "default" : "outline"}
+                              size="sm"
+                              className={cn(
+                                syncSuccess && "bg-green-600 hover:bg-green-700"
+                              )}
+                            >
+                              {isSyncing ? (
+                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              ) : syncSuccess ? (
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                              ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                              )}
+                              {isSyncing ? "Syncing..." : syncSuccess ? "Synced!" : "Sync"}
+                            </Button>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto scrollbar-thin p-2">
-                              {project.available_columns.map((column) => (
-                                <label
-                                  key={column}
-                                  className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer transition-colors group"
-                                >
-                                  <div className="relative flex items-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={project.selected_columns.includes(column)}
-                                      onChange={() => toggleColumn(project.project_uid, column)}
-                                      className="w-4 h-4 text-primary rounded border-input focus:ring-2 focus:ring-ring"
+                            {/* Auto-Sync Configuration Dialog */}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Clock className="mr-2 h-4 w-4" />
+                                  Auto-Sync
+                                  {project.auto_sync_enabled && (
+                                    <div className="ml-2 h-2 w-2 rounded-full bg-green-500" />
+                                  )}
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Configure Auto-Sync</DialogTitle>
+                                  <DialogDescription>
+                                    Set up automatic synchronization for "{project.project_name}"
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                  <div className="flex items-center justify-between">
+                                    <Label htmlFor="auto-sync-enabled">Enable Auto-Sync</Label>
+                                    <Switch
+                                      id="auto-sync-enabled"
+                                      checked={autoSyncConfig[project.project_uid]?.enabled || false}
+                                      onCheckedChange={(enabled) => 
+                                        configureAutoSync(
+                                          project.project_uid, 
+                                          enabled, 
+                                          autoSyncConfig[project.project_uid]?.interval || '01:00:00'
+                                        )
+                                      }
                                     />
                                   </div>
-                                  <span className="text-sm text-foreground truncate flex-1" title={column}>
-                                    {column}
-                                  </span>
-                                </label>
-                              ))}
-                            </div>
+                                  {autoSyncConfig[project.project_uid]?.enabled && (
+                                    <div className="space-y-2">
+                                      <Label htmlFor="sync-interval">Sync Interval</Label>
+                                      <Select
+                                        value={autoSyncConfig[project.project_uid]?.interval || '01:00:00'}
+                                        onValueChange={(interval) => 
+                                          configureAutoSync(project.project_uid, true, interval)
+                                        }
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="00:30:00">Every 30 minutes</SelectItem>
+                                          <SelectItem value="01:00:00">Every hour</SelectItem>
+                                          <SelectItem value="02:00:00">Every 2 hours</SelectItem>
+                                          <SelectItem value="06:00:00">Every 6 hours</SelectItem>
+                                          <SelectItem value="12:00:00">Every 12 hours</SelectItem>
+                                          <SelectItem value="24:00:00">Every 24 hours</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                      <p className="text-sm text-muted-foreground">
+                                        Next sync: {project.next_sync_time ? 
+                                          new Date(project.next_sync_time).toLocaleString() : 
+                                          'Not scheduled'
+                                        }
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                                <DialogFooter>
+                                  <Button 
+                                    variant="outline" 
+                                    onClick={() => configureAutoSync(project.project_uid, false, '00:00:00')}
+                                    disabled={!project.auto_sync_enabled}
+                                  >
+                                    Disable Auto-Sync
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
 
-                            <div className="text-sm text-muted-foreground mt-3 p-2 bg-background rounded border border-border">
-                              {project.selected_columns.length} of {project.available_columns.length} columns selected
-                            </div>
+                            <Button
+                              onClick={() => toggleProjectExpansion(project.project_uid)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              {expandedProjects.has(project.project_uid) ? (
+                                <ChevronDown className="mr-2 h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="mr-2 h-4 w-4" />
+                              )}
+                              {expandedProjects.has(project.project_uid) ? "Collapse" : "Expand"}
+                            </Button>
+                            <Button 
+                              onClick={() => deleteSavedProject(project.id, project.project_name)} 
+                              variant="destructive" 
+                              size="sm"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
                           </div>
-                        )}
-
-                        {/* Project Information */}
-                        <div className="text-center py-8 bg-muted/20 rounded-lg border border-border">
-                          <Database className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                          <p className="text-foreground font-semibold">{project.project_name}</p>
-                          <p className="text-muted-foreground text-sm mt-1">
-                            Submissions: {project.total_submissions} • 
-                            Use the sync feature to update data
-                          </p>
-                          <Button className="mt-4" variant="outline">
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Sync Data
-                          </Button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Expanded Content for Saved Projects */}
+                      {expandedProjects.has(project.project_uid) && (
+                        <div className="p-6 space-y-6">
+                          {/* Column Selection */}
+                          {project.available_columns.length > 0 && (
+                            <div className="bg-muted/30 rounded-lg p-4 border border-border">
+                              <div className="flex items-center justify-between mb-4">
+                                <h6 className="font-semibold text-foreground flex items-center gap-2">
+                                  <CheckSquare className="h-4 w-4" />
+                                  Select Columns to Display
+                                </h6>
+                                <div className="flex gap-2">
+                                  <Button 
+                                    onClick={() => selectAllColumns(project.project_uid, project.available_columns)} 
+                                    variant="outline" 
+                                    size="sm"
+                                  >
+                                    Select All
+                                  </Button>
+                                  <Button 
+                                    onClick={() => clearAllColumns(project.project_uid)} 
+                                    variant="outline" 
+                                    size="sm"
+                                  >
+                                    Clear All
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto scrollbar-thin p-2">
+                                {project.available_columns.map((column) => (
+                                  <label
+                                    key={column}
+                                    className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded cursor-pointer transition-colors group"
+                                  >
+                                    <div className="relative flex items-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={project.selected_columns.includes(column)}
+                                        onChange={() => toggleColumn(project.project_uid, column)}
+                                        className="w-4 h-4 text-primary rounded border-input focus:ring-2 focus:ring-ring"
+                                      />
+                                    </div>
+                                    <span className="text-sm text-foreground truncate flex-1" title={column}>
+                                      {column}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+
+                              <div className="text-sm text-muted-foreground mt-3 p-2 bg-background rounded border border-border">
+                                {project.selected_columns.length} of {project.available_columns.length} columns selected
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Project Information */}
+                          <div className="text-center py-8 bg-muted/20 rounded-lg border border-border">
+                            <Database className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                            <p className="text-foreground font-semibold">{project.project_name}</p>
+                            <p className="text-muted-foreground text-sm mt-1">
+                              Submissions: {project.total_submissions} • 
+                              Use the sync feature to update data
+                            </p>
+                            <div className="flex gap-2 justify-center mt-4">
+                              <Button 
+                                onClick={() => syncProject(project.project_uid, project.project_name)}
+                                disabled={isSyncing}
+                                variant={syncSuccess ? "default" : "outline"}
+                                className={cn(
+                                  syncSuccess && "bg-green-600 hover:bg-green-700"
+                                )}
+                              >
+                                {isSyncing ? (
+                                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                ) : syncSuccess ? (
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                ) : (
+                                  <RefreshCw className="mr-2 h-4 w-4" />
+                                )}
+                                {isSyncing ? "Syncing..." : syncSuccess ? "Synced!" : "Sync Data"}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

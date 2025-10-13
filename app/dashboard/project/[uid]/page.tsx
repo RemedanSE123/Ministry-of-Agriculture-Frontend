@@ -3,10 +3,14 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Database, ArrowLeft, RefreshCw, Download, CheckSquare, Trash2, Save, ChevronDown, ChevronRight } from "lucide-react"
+import { Database, ArrowLeft, RefreshCw, Download, CheckSquare, Trash2, Save, ChevronDown, ChevronRight, Clock, Settings, AlertCircle, CheckCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface ProjectData {
   id: number
@@ -22,45 +26,73 @@ interface ProjectData {
   last_sync: string
   token_name: string
   submissions: any[]
+  auto_sync_enabled: boolean
+  auto_sync_interval?: string
+  next_sync_time?: string
 }
 
 // API utility
 const api = {
-  async getProject(projectUid: string): Promise<{ success: boolean; project?: ProjectData; error?: string }> {
+  async makeRequest(url: string, options: RequestInit = {}) {
+    const API_BASE_URL = 'http://localhost:5000/api';
+    const fullUrl = `${API_BASE_URL}${url}`;
+    
     try {
-      const response = await fetch(`http://localhost:5000/api/projects/${projectUid}`)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      const response = await fetch(fullUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        ...options,
+      });
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
-      return await response.json()
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `Request failed with status ${response.status}`);
+      }
+      
+      return data;
     } catch (error) {
-      console.error('Error fetching project:', error)
-      return { success: false, error: typeof error === "object" && error !== null && "message" in error ? String((error as { message?: unknown }).message) : String(error) }
+      console.error('API request failed:', error);
+      throw error;
     }
   },
 
+  async getProject(projectUid: string) {
+    return this.makeRequest(`/projects/${projectUid}`);
+  },
+
   async updateProjectColumns(projectUid: string, selectedColumns: string[]) {
-    const response = await fetch(`http://localhost:5000/api/projects/${projectUid}/columns`, {
+    return this.makeRequest(`/projects/${projectUid}/columns`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selected_columns: selectedColumns }),
-    })
-    return await response.json()
+    });
   },
 
   async syncProject(projectUid: string) {
-    const response = await fetch(`http://localhost:5000/api/projects/${projectUid}/sync`, {
+    return this.makeRequest(`/projects/${projectUid}/sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    return await response.json()
+    });
   },
 
   async deleteProject(projectId: number) {
-    const response = await fetch(`http://localhost:5000/api/projects/${projectId}`, {
+    return this.makeRequest(`/projects/${projectId}`, {
       method: 'DELETE',
-    })
-    return await response.json()
+    });
+  },
+
+  async configureAutoSync(projectUid: string, enabled: boolean, interval: string) {
+    return this.makeRequest(`/projects/${projectUid}/auto-sync`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, interval }),
+    });
   }
 }
 
@@ -73,13 +105,20 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<ProjectData | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['columns']))
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['columns', 'data']))
+  const [autoSyncConfig, setAutoSyncConfig] = useState<{enabled: boolean, interval: string}>({enabled: false, interval: '01:00:00'})
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
 
   useEffect(() => {
     if (projectUid) {
       loadProject()
     }
   }, [projectUid])
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 5000)
+  }
 
   const loadProject = async () => {
     try {
@@ -88,13 +127,17 @@ export default function ProjectDetailPage() {
       
       if (response.success && response.project) {
         setProject(response.project)
+        setAutoSyncConfig({
+          enabled: response.project.auto_sync_enabled || false,
+          interval: response.project.auto_sync_interval || '01:00:00'
+        })
       } else {
         console.error('Failed to load project:', response.error)
-        alert(`Failed to load project: ${response.error}`)
+        showNotification('error', `Failed to load project: ${response.error}`)
       }
     } catch (error) {
       console.error('Error loading project:', error)
-      alert('Error loading project data')
+      showNotification('error', 'Error loading project data')
     } finally {
       setLoading(false)
     }
@@ -122,12 +165,13 @@ export default function ProjectDetailPage() {
       
       if (response.success) {
         setProject(prev => prev ? { ...prev, selected_columns: newSelectedColumns } : null)
+        showNotification('success', 'Columns updated successfully')
       } else {
-        alert(`Error updating columns: ${response.error}`)
+        showNotification('error', `Error updating columns: ${response.error}`)
       }
     } catch (error) {
       console.error('Error updating columns:', error)
-      alert('Error updating columns')
+      showNotification('error', 'Error updating columns')
     }
   }
 
@@ -139,12 +183,13 @@ export default function ProjectDetailPage() {
       
       if (response.success) {
         setProject(prev => prev ? { ...prev, selected_columns: project.available_columns } : null)
+        showNotification('success', 'All columns selected')
       } else {
-        alert(`Error updating columns: ${response.error}`)
+        showNotification('error', `Error updating columns: ${response.error}`)
       }
     } catch (error) {
       console.error('Error selecting all columns:', error)
-      alert('Error selecting all columns')
+      showNotification('error', 'Error selecting all columns')
     }
   }
 
@@ -156,12 +201,13 @@ export default function ProjectDetailPage() {
       
       if (response.success) {
         setProject(prev => prev ? { ...prev, selected_columns: [] } : null)
+        showNotification('success', 'All columns cleared')
       } else {
-        alert(`Error updating columns: ${response.error}`)
+        showNotification('error', `Error updating columns: ${response.error}`)
       }
     } catch (error) {
       console.error('Error clearing columns:', error)
-      alert('Error clearing columns')
+      showNotification('error', 'Error clearing columns')
     }
   }
 
@@ -174,15 +220,32 @@ export default function ProjectDetailPage() {
       
       if (response.success) {
         await loadProject() // Reload project data
-        alert('Project synced successfully!')
+        showNotification('success', 'Project synced successfully!')
       } else {
-        alert(`Error syncing project: ${response.error}`)
+        showNotification('error', `Error syncing project: ${response.error}`)
       }
     } catch (error) {
       console.error('Error syncing project:', error)
-      alert('Error syncing project')
+      showNotification('error', 'Error syncing project')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const configureAutoSync = async (enabled: boolean, interval: string) => {
+    try {
+      const response = await api.configureAutoSync(projectUid, enabled, interval)
+      
+      if (response.success) {
+        setAutoSyncConfig({ enabled, interval })
+        await loadProject() // Reload to get updated sync times
+        showNotification('success', response.message)
+      } else {
+        throw new Error(response.error)
+      }
+    } catch (error: any) {
+      console.error('Error configuring auto-sync:', error)
+      showNotification('error', `Failed to configure auto-sync: ${error.message}`)
     }
   }
 
@@ -193,20 +256,20 @@ export default function ProjectDetailPage() {
       const response = await api.deleteProject(project.id)
       
       if (response.success) {
-        alert('Project deleted successfully!')
+        showNotification('success', 'Project deleted successfully!')
         router.push('/dashboard/collected-data')
       } else {
-        alert(`Error deleting project: ${response.error}`)
+        showNotification('error', `Error deleting project: ${response.error}`)
       }
     } catch (error) {
       console.error('Error deleting project:', error)
-      alert('Error deleting project')
+      showNotification('error', 'Error deleting project')
     }
   }
 
   const exportData = () => {
     if (!project || project.submissions.length === 0) {
-      alert('No data to export')
+      showNotification('error', 'No data to export')
       return
     }
 
@@ -231,6 +294,22 @@ export default function ProjectDetailPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    
+    showNotification('success', 'Data exported successfully')
+  }
+
+  const formatTimeUntilSync = (nextSyncTime: string): string => {
+    const now = new Date()
+    const nextSync = new Date(nextSyncTime)
+    const diffMs = nextSync.getTime() - now.getTime()
+    
+    if (diffMs <= 0) return 'Now'
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60))
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
   }
 
   if (isLoading) {
@@ -278,6 +357,30 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="min-h-screen bg-background p-6">
+      {/* Notification */}
+      {notification && (
+        <div className={cn(
+          "fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg border max-w-md",
+          notification.type === 'success' 
+            ? "bg-green-50 border-green-200 text-green-800"
+            : "bg-red-50 border-red-200 text-red-800"
+        )}>
+          <div className="flex items-center gap-3">
+            {notification.type === 'success' && <CheckCircle className="h-5 w-5" />}
+            {notification.type === 'error' && <AlertCircle className="h-5 w-5" />}
+            <span className="flex-1">{notification.message}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNotification(null)}
+              className="h-6 w-6 p-0 hover:bg-transparent"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -300,6 +403,11 @@ export default function ProjectDetailPage() {
                 <p className="text-muted-foreground">
                   Token: {project.token_name} • {project.total_submissions} submissions • 
                   Last sync: {project.last_sync ? new Date(project.last_sync).toLocaleString() : 'Never'}
+                  {project.auto_sync_enabled && project.next_sync_time && (
+                    <span className="ml-2 text-blue-600">
+                      • Next sync in: {formatTimeUntilSync(project.next_sync_time)}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -309,6 +417,78 @@ export default function ProjectDetailPage() {
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
+            
+            {/* Auto-Sync Configuration Dialog */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Clock className="mr-2 h-4 w-4" />
+                  Auto-Sync
+                  {project.auto_sync_enabled && (
+                    <div className="ml-2 h-2 w-2 rounded-full bg-green-500" />
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Configure Auto-Sync</DialogTitle>
+                  <DialogDescription>
+                    Set up automatic synchronization for "{project.project_name}"
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="auto-sync-enabled">Enable Auto-Sync</Label>
+                    <Switch
+                      id="auto-sync-enabled"
+                      checked={autoSyncConfig.enabled}
+                      onCheckedChange={(enabled) => 
+                        configureAutoSync(enabled, autoSyncConfig.interval)
+                      }
+                    />
+                  </div>
+                  {autoSyncConfig.enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="sync-interval">Sync Interval</Label>
+                      <Select
+                        value={autoSyncConfig.interval}
+                        onValueChange={(interval) => 
+                          configureAutoSync(true, interval)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="00:30:00">Every 30 minutes</SelectItem>
+                          <SelectItem value="01:00:00">Every hour</SelectItem>
+                          <SelectItem value="02:00:00">Every 2 hours</SelectItem>
+                          <SelectItem value="06:00:00">Every 6 hours</SelectItem>
+                          <SelectItem value="12:00:00">Every 12 hours</SelectItem>
+                          <SelectItem value="24:00:00">Every 24 hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        Next sync: {project.next_sync_time ? 
+                          new Date(project.next_sync_time).toLocaleString() : 
+                          'Not scheduled'
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => configureAutoSync(false, '00:00:00')}
+                    disabled={!project.auto_sync_enabled}
+                  >
+                    Disable Auto-Sync
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             <Button onClick={syncProject} disabled={syncing}>
               <RefreshCw className={cn("mr-2 h-4 w-4", syncing && "animate-spin")} />
               {syncing ? "Syncing..." : "Sync"}
