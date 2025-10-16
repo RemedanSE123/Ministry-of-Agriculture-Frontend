@@ -3,7 +3,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Database, ArrowLeft, RefreshCw, Download, CheckSquare, Trash2, Save, ChevronDown, ChevronRight, Clock, Settings, AlertCircle, CheckCircle, X } from "lucide-react"
+import { Database, ArrowLeft, RefreshCw, Download, CheckSquare, Trash2, Save, ChevronDown, ChevronRight, Clock, Settings, AlertCircle, CheckCircle, X, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -93,8 +93,141 @@ const api = {
       method: 'PUT',
       body: JSON.stringify({ enabled, interval }),
     });
+  },
+
+  // Image API - using your backend
+  async getImage(projectUid: string, submissionId: string, filename: string, token: string) {
+    return this.makeRequest(`/kobo/image/${projectUid}/${submissionId}/${filename}?token=${encodeURIComponent(token)}`);
   }
 }
+
+
+
+
+
+
+// Enhanced Image display component
+const ImageDisplay = ({ value, column, submission, projectUid, token }: { 
+  value: any, 
+  column: string, 
+  submission: any, 
+  projectUid?: string, 
+  token?: string 
+}) => {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const stringValue = String(value || '');
+  
+  // ENHANCED URL CONSTRUCTION - Better detection for both initial and synced data
+  const getImageUrl = () => {
+    // First, try to use the pre-processed URLs from backend
+    const directUrl = submission[`${column}_attachment_url`];
+    const directToken = submission[`${column}_attachment_url_auth`] || token;
+
+    const imageUrl = submission[`${column}_url`];
+    const imageToken = submission[`${column}_url_auth`] || token;
+
+    // Use the first available image URL (prefer direct URLs)
+    const finalImageUrl = directUrl || imageUrl;
+    const finalToken = directToken || imageToken;
+
+    if (finalImageUrl && finalToken) {
+      // Extract filename from URL for the proxy endpoint
+      const filename = finalImageUrl.split('/').pop() || stringValue;
+      return `http://localhost:5000/api/kobo/image/${projectUid}/${submission._id}/${encodeURIComponent(filename)}?token=${encodeURIComponent(finalToken)}`;
+    }
+
+    // Fallback: construct URL from filename
+    if (stringValue.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i) && projectUid && submission._id && token) {
+      return `http://localhost:5000/api/kobo/image/${projectUid}/${submission._id}/${encodeURIComponent(stringValue)}?token=${encodeURIComponent(token)}`;
+    }
+
+    return null;
+  };
+
+  const imageUrl = getImageUrl();
+
+  const handleRetry = () => {
+    setImageError(false);
+    setImageLoading(true);
+    setRetryCount(prev => prev + 1);
+  };
+
+  if (imageUrl && !imageError) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <img 
+            src={`${imageUrl}&retry=${retryCount}`}
+            alt={stringValue}
+            className="w-12 h-12 object-cover rounded border hover:scale-110 transition-transform cursor-pointer"
+            onLoad={() => setImageLoading(false)}
+            onError={() => {
+              console.error('Image failed to load:', imageUrl);
+              setImageError(true);
+              setImageLoading(false);
+            }}
+            onClick={() => window.open(imageUrl, '_blank')}
+          />
+          {imageLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            </div>
+          )}
+          {imageError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-red-50/80 rounded">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRetry}
+                className="h-6 w-6 p-0"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+        <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+          {stringValue}
+        </span>
+      </div>
+    );
+  }
+
+  // Fallback - just show image icon with filename
+  if (stringValue.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="w-12 h-12 bg-muted rounded flex items-center justify-center border">
+          <ImageIcon className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+          {stringValue}
+        </span>
+        {imageError && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRetry}
+            className="h-6 w-6 p-0 ml-1"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // Default text display
+  return (
+    <span className="truncate max-w-[200px]" title={stringValue}>
+      {stringValue}
+    </span>
+  );
+};
+
 
 export default function ProjectDetailPage() {
   const { user, isLoading } = useProtectedRoute()
@@ -638,12 +771,14 @@ export default function ProjectDetailPage() {
                           {project.selected_columns.map((column) => (
                             <td
                               key={column}
-                              className="px-4 py-3 text-sm text-foreground max-w-xs truncate"
-                              title={String(submission[column] || '')}
+                              className="px-4 py-3 text-sm text-foreground"
                             >
-                              {submission[column] !== undefined && submission[column] !== null
-                                ? String(submission[column])
-                                : '-'}
+                              <ImageDisplay 
+                                value={submission[column]} 
+                                column={column} 
+                                submission={submission}
+                                projectUid={project.project_uid}
+                              />
                             </td>
                           ))}
                         </tr>

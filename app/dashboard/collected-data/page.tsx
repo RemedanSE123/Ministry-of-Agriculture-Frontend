@@ -3,7 +3,7 @@
 import type React from "react"
 import { useProtectedRoute } from "@/hooks/useProtectedRoute"
 import { useState, useEffect } from "react"
-import { Database, Plus, RefreshCw, Trash2, ChevronDown, ChevronRight, Key, CheckSquare, Download, Save, ChevronUp, ChevronLeft, Clock, Settings, AlertCircle, CheckCircle, X } from "lucide-react"
+import { Database, Plus, RefreshCw, Trash2, ChevronDown, ChevronRight, Key, CheckSquare, Download, Save, ChevronUp, ChevronLeft, Clock, Settings, AlertCircle, CheckCircle, X, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -120,6 +120,11 @@ const api = {
       method: 'POST',
       body: JSON.stringify(tokenData),
     });
+  },
+
+  // Image API
+  async getImage(projectUid: string, submissionId: string, filename: string, token: string) {
+    return this.makeRequest(`/kobo/image/${projectUid}/${submissionId}/${filename}?token=${encodeURIComponent(token)}`);
   }
 };
 
@@ -179,6 +184,7 @@ interface SavedProject {
   auto_sync_enabled: boolean
   auto_sync_interval?: string
   next_sync_time?: string
+  submissions?: any[]
 }
 
 interface SyncStatus {
@@ -188,6 +194,140 @@ interface SyncStatus {
     error?: string
   }
 }
+
+
+
+// Enhanced Image display component
+const ImageDisplay = ({ value, column, submission, projectUid, token }: { 
+  value: any, 
+  column: string, 
+  submission: any, 
+  projectUid?: string, 
+  token?: string 
+}) => {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const stringValue = String(value || '');
+  
+
+
+
+
+// Enhanced URL construction - Better handling of filename encoding
+const getImageUrl = () => {
+  // First, try to use the pre-processed URLs from backend
+  const directUrl = submission[`${column}_attachment_url`];
+  const directToken = submission[`${column}_attachment_url_auth`] || token;
+
+  const imageUrl = submission[`${column}_url`];
+  const imageToken = submission[`${column}_url_auth`] || token;
+
+  // Use the first available image URL (prefer direct URLs)
+  const finalImageUrl = directUrl || imageUrl;
+  const finalToken = directToken || imageToken;
+
+  if (finalImageUrl && finalToken) {
+    // Extract filename from URL for the proxy endpoint
+    const filenameFromUrl = finalImageUrl.split('/').pop() || stringValue;
+    // Properly encode the filename for the URL
+    const encodedFilename = encodeURIComponent(filenameFromUrl);
+    return `http://localhost:5000/api/kobo/image/${projectUid}/${submission._id}/${encodedFilename}?token=${encodeURIComponent(finalToken)}`;
+  }
+
+  // Fallback: construct URL from filename with proper encoding
+  if (stringValue.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i) && projectUid && submission._id && token) {
+    const encodedFilename = encodeURIComponent(stringValue);
+    return `http://localhost:5000/api/kobo/image/${projectUid}/${submission._id}/${encodedFilename}?token=${encodeURIComponent(token)}`;
+  }
+
+  return null;
+};
+
+
+
+
+  const imageUrl = getImageUrl();
+
+  const handleRetry = () => {
+    setImageError(false);
+    setImageLoading(true);
+    setRetryCount(prev => prev + 1);
+  };
+
+  if (imageUrl && !imageError) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <img 
+            src={`${imageUrl}&retry=${retryCount}`}
+            alt={stringValue}
+            className="w-12 h-12 object-cover rounded border hover:scale-110 transition-transform cursor-pointer"
+            onLoad={() => setImageLoading(false)}
+            onError={() => {
+              console.error('Image failed to load:', imageUrl);
+              setImageError(true);
+              setImageLoading(false);
+            }}
+            onClick={() => window.open(imageUrl, '_blank')}
+          />
+          {imageLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            </div>
+          )}
+          {imageError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-red-50/80 rounded">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRetry}
+                className="h-6 w-6 p-0"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+        <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+          {stringValue}
+        </span>
+      </div>
+    );
+  }
+
+  // Fallback - just show image icon with filename
+  if (stringValue.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="w-12 h-12 bg-muted rounded flex items-center justify-center border">
+          <ImageIcon className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+          {stringValue}
+        </span>
+        {imageError && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRetry}
+            className="h-6 w-6 p-0 ml-1"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // Default text display
+  return (
+    <span className="truncate max-w-[200px]" title={stringValue}>
+      {stringValue}
+    </span>
+  );
+};
 
 export default function CollectedDataPage() {
   const { user, isLoading } = useProtectedRoute()
@@ -454,66 +594,82 @@ export default function CollectedDataPage() {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
   }
 
-  const addProjectToDashboard = async (project: Project, tokenId: string) => {
-    try {
-      // Ensure columns are properly formatted arrays
-      const safeAvailableColumns = Array.isArray(project.available_columns) 
-        ? project.available_columns 
-        : [];
 
-      const safeSelectedColumns = Array.isArray(project.selected_columns) 
-        ? project.selected_columns 
-        : safeAvailableColumns;
 
-      const projectData = {
-        token_id: parseInt(tokenId),
-        uid: project.uid,
-        name: project.name,
-        owner__username: project.owner__username,
-        date_created: project.date_created,
-        deployment__active: project.deployment__active,
-        submissions: project.submissions || [],
-        available_columns: safeAvailableColumns,
-        selected_columns: safeSelectedColumns,
-        data_url: project.data_url
-      }
 
-      console.log('Saving project to database:', {
-        name: project.name,
-        available_columns: safeAvailableColumns.length,
-        selected_columns: safeSelectedColumns.length
-      });
 
-      const response = await api.saveProject(projectData)
 
-      if (response.success) {
-        // Update local state to mark project as saved
-        setTokens(prev =>
-          prev.map(token =>
-            token.id === tokenId
-              ? {
-                  ...token,
-                  projects: token.projects.map(p =>
-                    p.uid === project.uid ? { ...p, saved: true } : p
-                  ),
-                }
-              : token
-          )
-        )
+// FIXED: Enhanced addProjectToDashboard function
+const addProjectToDashboard = async (project: Project, tokenId: string) => {
+  try {
+    // Ensure columns are properly formatted arrays
+    const safeAvailableColumns = Array.isArray(project.available_columns) 
+      ? project.available_columns 
+      : [];
 
-        // Reload saved projects and refresh sidebar
-        await loadSavedData()
-        refreshSidebar()
-        
-        showNotification('success', `Project "${project.name}" saved to dashboard!`)
-      } else {
-        showNotification('error', `Error: ${response.error}`)
-      }
-    } catch (error: any) {
-      console.error('Error saving project:', error)
-      showNotification('error', `Error saving project: ${error.message}`)
+    const safeSelectedColumns = Array.isArray(project.selected_columns) 
+      ? project.selected_columns 
+      : safeAvailableColumns;
+
+    // Include ALL submission data including processed image URLs
+    const submissionsWithImageUrls = project.submissions || [];
+
+    console.log('Saving project to database with image URLs:', {
+      name: project.name,
+      available_columns: safeAvailableColumns.length,
+      selected_columns: safeSelectedColumns.length,
+      submissions: submissionsWithImageUrls.length,
+      sample_image_urls: submissionsWithImageUrls.length > 0 ? 
+        Object.keys(submissionsWithImageUrls[0]).filter(key => key.includes('_url')) : []
+    });
+
+    const projectData = {
+      token_id: parseInt(tokenId),
+      uid: project.uid,
+      name: project.name,
+      owner__username: project.owner__username,
+      date_created: project.date_created,
+      deployment__active: project.deployment__active,
+      submissions: submissionsWithImageUrls, // This now includes image URL fields
+      available_columns: safeAvailableColumns,
+      selected_columns: safeSelectedColumns,
+      data_url: project.data_url
     }
+
+    const response = await api.saveProject(projectData)
+
+    if (response.success) {
+      // Update local state to mark project as saved
+      setTokens(prev =>
+        prev.map(token =>
+          token.id === tokenId
+            ? {
+                ...token,
+                projects: token.projects.map(p =>
+                  p.uid === project.uid ? { ...p, saved: true } : p
+                ),
+              }
+            : token
+        )
+      )
+
+      // Reload saved projects and refresh sidebar
+      await loadSavedData()
+      refreshSidebar()
+      
+      showNotification('success', `Project "${project.name}" saved to dashboard!`)
+    } else {
+      showNotification('error', `Error: ${response.error}`)
+    }
+  } catch (error: any) {
+    console.error('Error saving project:', error)
+    showNotification('error', `Error saving project: ${error.message}`)
   }
+}
+
+
+
+
 
   const addToken = async () => {
     if (!newToken.trim()) {
@@ -1269,12 +1425,15 @@ export default function CollectedDataPage() {
                                                 {project.selected_columns.map((column) => (
                                                   <td
                                                     key={column}
-                                                    className="px-4 py-3 text-sm text-foreground max-w-xs truncate"
-                                                    title={String(submission[column] || "")}
+                                                    className="px-4 py-3 text-sm text-foreground"
                                                   >
-                                                    {submission[column] !== undefined && submission[column] !== null
-                                                      ? String(submission[column])
-                                                      : "-"}
+                                                    <ImageDisplay 
+                                                      value={submission[column]} 
+                                                      column={column} 
+                                                      submission={submission}
+                                                      projectUid={project.uid}
+                                                      token={tokenData.token}
+                                                    />
                                                   </td>
                                                 ))}
                                               </tr>
