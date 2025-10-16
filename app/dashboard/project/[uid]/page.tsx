@@ -3,7 +3,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Database, ArrowLeft, RefreshCw, Download, CheckSquare, Trash2, Save, ChevronDown, ChevronRight, Clock, Settings, AlertCircle, CheckCircle, X, ImageIcon } from "lucide-react"
+import { Database, ArrowLeft, RefreshCw, Download, CheckSquare, Trash2, Save, ChevronDown, ChevronRight, Clock, Settings, AlertCircle, CheckCircle, X, ImageIcon, BarChart3, Map, Users, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -11,6 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ChartsDashboard } from '@/components/charts/ChartsDashboard'
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface ProjectData {
   id: number
@@ -29,6 +33,13 @@ interface ProjectData {
   auto_sync_enabled: boolean
   auto_sync_interval?: string
   next_sync_time?: string
+}
+
+interface GraphConfig {
+  xAxis: string
+  yAxes: string[]
+  graphType: 'bar' | 'line' | 'pie' | 'scatter' | 'radar' | 'doughnut' | 'polarArea'
+  title: string
 }
 
 // API utility
@@ -100,11 +111,6 @@ const api = {
     return this.makeRequest(`/kobo/image/${projectUid}/${submissionId}/${filename}?token=${encodeURIComponent(token)}`);
   }
 }
-
-
-
-
-
 
 // Enhanced Image display component
 const ImageDisplay = ({ value, column, submission, projectUid, token }: { 
@@ -228,6 +234,275 @@ const ImageDisplay = ({ value, column, submission, projectUid, token }: {
   );
 };
 
+// User Generated Graph Component
+const UserGeneratedGraph = ({ project, projectUid }: { project: ProjectData, projectUid: string }) => {
+  const [graphConfig, setGraphConfig] = useState<GraphConfig>({
+    xAxis: '',
+    yAxes: [],
+    graphType: 'bar',
+    title: ''
+  });
+  const [availableYAxis, setAvailableYAxis] = useState<string[]>([]);
+  const [generatedGraph, setGeneratedGraph] = useState<any>(null);
+
+  useEffect(() => {
+    if (project) {
+      setAvailableYAxis(project.available_columns);
+    }
+  }, [project]);
+
+  const addYAxis = (column: string) => {
+    if (!graphConfig.yAxes.includes(column)) {
+      setGraphConfig(prev => ({
+        ...prev,
+        yAxes: [...prev.yAxes, column]
+      }));
+    }
+  };
+
+  const removeYAxis = (column: string) => {
+    setGraphConfig(prev => ({
+      ...prev,
+      yAxes: prev.yAxes.filter(y => y !== column)
+    }));
+  };
+
+  const generateGraph = () => {
+    if (!graphConfig.xAxis || graphConfig.yAxes.length === 0) {
+      alert('Please select X-axis and at least one Y-axis');
+      return;
+    }
+
+    // Mock graph generation - in real implementation, you would use a charting library
+    const mockGraph = {
+      type: graphConfig.graphType,
+      title: graphConfig.title || `${graphConfig.graphType.toUpperCase()} Chart`,
+      data: {
+        labels: project.submissions.map(sub => sub[graphConfig.xAxis] || 'N/A').slice(0, 10),
+        datasets: graphConfig.yAxes.map((yAxis, index) => ({
+          label: yAxis,
+          data: project.submissions.map(sub => sub[yAxis] || 0).slice(0, 10),
+          backgroundColor: `hsl(${index * 60}, 70%, 50%)`,
+          borderColor: `hsl(${index * 60}, 70%, 30%)`,
+          borderWidth: 2
+        }))
+      }
+    };
+
+    setGeneratedGraph(mockGraph);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Create Custom Graph</CardTitle>
+          <CardDescription>
+            Select data columns and configure your graph settings
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="graph-title">Graph Title</Label>
+              <Input
+                id="graph-title"
+                placeholder="Enter graph title"
+                value={graphConfig.title}
+                onChange={(e) => setGraphConfig(prev => ({ ...prev, title: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="graph-type">Graph Type</Label>
+              <Select
+                value={graphConfig.graphType}
+                onValueChange={(value: GraphConfig['graphType']) => 
+                  setGraphConfig(prev => ({ ...prev, graphType: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bar">Bar Chart</SelectItem>
+                  <SelectItem value="line">Line Chart</SelectItem>
+                  <SelectItem value="pie">Pie Chart</SelectItem>
+                  <SelectItem value="scatter">Scatter Plot</SelectItem>
+                  <SelectItem value="radar">Radar Chart</SelectItem>
+                  <SelectItem value="doughnut">Doughnut Chart</SelectItem>
+                  <SelectItem value="polarArea">Polar Area Chart</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="x-axis">X-Axis (Category)</Label>
+            <Select
+              value={graphConfig.xAxis}
+              onValueChange={(value) => setGraphConfig(prev => ({ ...prev, xAxis: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select X-axis column" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYAxis.map(column => (
+                  <SelectItem key={column} value={column}>
+                    {column}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Y-Axis (Values)</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Available Columns</Label>
+                <div className="border rounded-lg p-2 max-h-40 overflow-y-auto">
+                  {availableYAxis
+                    .filter(col => col !== graphConfig.xAxis && !graphConfig.yAxes.includes(col))
+                    .map(column => (
+                      <div
+                        key={column}
+                        className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer"
+                        onClick={() => addYAxis(column)}
+                      >
+                        <span className="text-sm">{column}</span>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Selected Y-Axis ({graphConfig.yAxes.length})</Label>
+                <div className="border rounded-lg p-2 max-h-40 overflow-y-auto">
+                  {graphConfig.yAxes.map(column => (
+                    <div
+                      key={column}
+                      className="flex items-center justify-between p-2 hover:bg-muted rounded"
+                    >
+                      <span className="text-sm">{column}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-destructive"
+                        onClick={() => removeYAxis(column)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Button onClick={generateGraph} className="w-full">
+            Generate Graph
+          </Button>
+        </CardContent>
+      </Card>
+
+      {generatedGraph && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{generatedGraph.title}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-muted/20 rounded-lg p-6 text-center border">
+              <BarChart3 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <p className="text-lg font-semibold mb-2">{generatedGraph.title}</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Type: {generatedGraph.type.toUpperCase()} | 
+                X-Axis: {graphConfig.xAxis} | 
+                Y-Axes: {graphConfig.yAxes.join(', ')}
+              </p>
+              <div className="bg-white p-4 rounded border">
+                <p className="text-xs text-muted-foreground">
+                  [Graph visualization would be rendered here using Chart.js or similar library]
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Data points: {generatedGraph.data.labels.length} labels × {generatedGraph.data.datasets.length} datasets
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+// Map Visualization Component
+const MapVisualization = ({ project }: { project: ProjectData }) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Map Visualization</CardTitle>
+        <CardDescription>
+          Geographic data visualization (requires location data in submissions)
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="bg-muted/20 rounded-lg p-12 text-center border">
+          <Map className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Map View</h3>
+          <p className="text-muted-foreground mb-4">
+            Interactive map visualization would be displayed here
+          </p>
+          <div className="bg-white p-4 rounded border inline-block">
+            <p className="text-sm">[Map Container]</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Latitude/Longitude data points: {project.submissions.filter(sub => sub._geolocation).length}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Admin Map Component
+const AdminMap = ({ project }: { project: ProjectData }) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Admin Map View</CardTitle>
+        <CardDescription>
+          Administrative boundaries and management view
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="bg-muted/20 rounded-lg p-12 text-center border">
+          <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Admin Map</h3>
+          <p className="text-muted-foreground mb-4">
+            Administrative boundaries and management overlay
+          </p>
+          <div className="bg-white p-4 rounded border inline-block">
+            <p className="text-sm">[Admin Map Container]</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Administrative layers and management tools
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Plus icon component
+const Plus = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+  </svg>
+);
 
 export default function ProjectDetailPage() {
   const { user, isLoading } = useProtectedRoute()
@@ -238,9 +513,10 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<ProjectData | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['columns', 'data']))
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['data']))
   const [autoSyncConfig, setAutoSyncConfig] = useState<{enabled: boolean, interval: string}>({enabled: false, interval: '01:00:00'})
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
+  const [activeTab, setActiveTab] = useState("overview")
 
   useEffect(() => {
     if (projectUid) {
@@ -655,157 +931,228 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* Column Selection Section */}
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="bg-muted/50 px-6 py-4 border-b border-border">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CheckSquare className="h-5 w-5 text-muted-foreground" />
-                <h2 className="text-lg font-semibold text-foreground">Column Selection</h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSection('columns')}
-              >
-                {expandedSections.has('columns') ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
+        {/* Main Content Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <Eye className="h-4 w-4" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="admin" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Admin View
+            </TabsTrigger>
+            <TabsTrigger value="graphs" className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              User Graphs
+            </TabsTrigger>
+            <TabsTrigger value="map" className="flex items-center gap-2">
+              <Map className="h-4 w-4" />
+              Map
+            </TabsTrigger>
+            <TabsTrigger value="admin-map" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Admin Map
+            </TabsTrigger>
+          </TabsList>
 
-          {expandedSections.has('columns') && (
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-semibold text-foreground">Select columns to display in data table</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {project.selected_columns.length} of {project.available_columns.length} columns selected
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={selectAllColumns} variant="outline" size="sm">
-                    Select All
-                  </Button>
-                  <Button onClick={clearAllColumns} variant="outline" size="sm">
-                    Clear All
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-4 border border-border rounded-lg">
-                {project.available_columns.map((column) => (
-                  <label
-                    key={column}
-                    className="flex items-center gap-3 p-3 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors group border border-border"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={project.selected_columns.includes(column)}
-                      onChange={() => toggleColumn(column)}
-                      className="w-4 h-4 text-primary rounded border-input focus:ring-2 focus:ring-ring"
-                    />
-                    <span className="text-sm text-foreground flex-1 font-medium" title={column}>
-                      {column}
-                    </span>
-                    <Badge variant="outline" className="text-xs">
-                      {column.split('/').length > 1 ? 'Grouped' : 'Basic'}
+          {/* Overview Tab - Only shows selected columns data */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Data Table Section */}
+            <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+              <div className="bg-muted/50 px-6 py-4 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Database className="h-5 w-5 text-muted-foreground" />
+                    <h2 className="text-lg font-semibold text-foreground">
+                      Collected Data ({project.submissions.length} submissions)
+                    </h2>
+                    <Badge variant="secondary">
+                      {project.selected_columns.length} columns selected
                     </Badge>
-                  </label>
-                ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleSection('data')}
+                  >
+                    {expandedSections.has('data') ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* Data Table Section */}
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="bg-muted/50 px-6 py-4 border-b border-border">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Database className="h-5 w-5 text-muted-foreground" />
-                <h2 className="text-lg font-semibold text-foreground">
-                  Collected Data ({project.submissions.length} submissions)
-                </h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSection('data')}
-              >
-                {expandedSections.has('data') ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {expandedSections.has('data') && (
-            <div className="p-6">
-              {project.submissions.length > 0 && project.selected_columns.length > 0 ? (
-                <div className="overflow-x-auto border border-border rounded-lg">
-                  <table className="w-full">
-                    <thead className="bg-muted/30">
-                      <tr>
-                        {project.selected_columns.map((column) => (
-                          <th
-                            key={column}
-                            className="px-4 py-3 text-left text-sm font-semibold text-foreground border-b border-border whitespace-nowrap"
-                          >
-                            {column}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {project.submissions.map((submission, index) => (
-                        <tr
-                          key={submission._id || index}
-                          className="hover:bg-muted/20 transition-colors"
-                        >
-                          {project.selected_columns.map((column) => (
-                            <td
-                              key={column}
-                              className="px-4 py-3 text-sm text-foreground"
+              {expandedSections.has('data') && (
+                <div className="p-6">
+                  {project.submissions.length > 0 && project.selected_columns.length > 0 ? (
+                    <div className="overflow-x-auto border border-border rounded-lg">
+                      <table className="w-full">
+                        <thead className="bg-muted/30">
+                          <tr>
+                            {project.selected_columns.map((column) => (
+                              <th
+                                key={column}
+                                className="px-4 py-3 text-left text-sm font-semibold text-foreground border-b border-border whitespace-nowrap"
+                              >
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {project.submissions.map((submission, index) => (
+                            <tr
+                              key={submission._id || index}
+                              className="hover:bg-muted/20 transition-colors"
                             >
-                              <ImageDisplay 
-                                value={submission[column]} 
-                                column={column} 
-                                submission={submission}
-                                projectUid={project.project_uid}
-                              />
-                            </td>
+                              {project.selected_columns.map((column) => (
+                                <td
+                                  key={column}
+                                  className="px-4 py-3 text-sm text-foreground"
+                                >
+                                  <ImageDisplay 
+                                    value={submission[column]} 
+                                    column={column} 
+                                    submission={submission}
+                                    projectUid={project.project_uid}
+                                  />
+                                </td>
+                              ))}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : project.selected_columns.length === 0 ? (
-                <div className="text-center py-12 bg-muted/20 rounded-lg border border-border">
-                  <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-foreground font-semibold">No columns selected</p>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    Please select at least one column to display data
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center py-12 bg-muted/20 rounded-lg border border-border">
-                  <Database className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-foreground font-semibold">No submissions collected</p>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    Data will appear here once submissions are received and synced
-                  </p>
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : project.selected_columns.length === 0 ? (
+                    <div className="text-center py-12 bg-muted/20 rounded-lg border border-border">
+                      <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-foreground font-semibold">No columns selected</p>
+                      <p className="text-muted-foreground text-sm mt-1">
+                        Please go to Admin View to select columns for display
+                      </p>
+                      <Button 
+                        onClick={() => setActiveTab("admin")} 
+                        className="mt-4"
+                      >
+                        Go to Admin View
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 bg-muted/20 rounded-lg border border-border">
+                      <Database className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-foreground font-semibold">No submissions collected</p>
+                      <p className="text-muted-foreground text-sm mt-1">
+                        Data will appear here once submissions are received and synced
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </TabsContent>
+
+          {/* Admin View Tab - Column selection and management */}
+          <TabsContent value="admin" className="space-y-6">
+            {/* Column Selection Section */}
+            <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+              <div className="bg-muted/50 px-6 py-4 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CheckSquare className="h-5 w-5 text-muted-foreground" />
+                    <h2 className="text-lg font-semibold text-foreground">Column Selection</h2>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleSection('columns')}
+                  >
+                    {expandedSections.has('columns') ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {expandedSections.has('columns') && (
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="font-semibold text-foreground">Select columns to display in data table</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {project.selected_columns.length} of {project.available_columns.length} columns selected
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={selectAllColumns} variant="outline" size="sm">
+                        Select All
+                      </Button>
+                      <Button onClick={clearAllColumns} variant="outline" size="sm">
+                        Clear All
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-4 border border-border rounded-lg">
+                    {project.available_columns.map((column) => (
+                      <label
+                        key={column}
+                        className="flex items-center gap-3 p-3 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors group border border-border"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={project.selected_columns.includes(column)}
+                          onChange={() => toggleColumn(column)}
+                          className="w-4 h-4 text-primary rounded border-input focus:ring-2 focus:ring-ring"
+                        />
+                        <span className="text-sm text-foreground flex-1 font-medium" title={column}>
+                          {column}
+                        </span>
+                        <Badge variant="outline" className="text-xs">
+                          {column.split('/').length > 1 ? 'Grouped' : 'Basic'}
+                        </Badge>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Project Settings */}
+            <div className="bg-card rounded-xl border border-border p-6">
+              <h3 className="text-lg font-semibold mb-4">Project Management</h3>
+              <div className="flex gap-2">
+                <Button onClick={syncProject} disabled={syncing}>
+                  <RefreshCw className={cn("mr-2 h-4 w-4", syncing && "animate-spin")} />
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </Button>
+                <Button onClick={deleteProject} variant="destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Project
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* User Generated Graphs Tab */}
+          <TabsContent value="graphs" className="space-y-4">
+            <UserGeneratedGraph project={project} projectUid={projectUid} />
+          </TabsContent>
+
+          {/* Map Tab */}
+          <TabsContent value="map" className="space-y-4">
+            <MapVisualization project={project} />
+          </TabsContent>
+
+          {/* Admin Map Tab */}
+          <TabsContent value="admin-map" className="space-y-4">
+            <AdminMap project={project} />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
